@@ -142,12 +142,7 @@ ros2 run omni_driver omni_driver --ros-args \
 Send a velocity command to move the robot:
 
 ```bash
-ros2 topic pub /cmd_vel geometry_msgs/Twist "
-linear:
-  x: 0.2
-  y: 0.0
-angular:
-  z: 0.4"
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.2, y: 0.0}}, {angular: {z: 0.1}}"
 ```
 
 ---
@@ -177,12 +172,12 @@ Example:
 ```yaml
 controller_manager:
   ros__parameters:
-    update_rate: 100
+    update_rate: 20 # Hz
 
 joint_group_velocity_controller:
   ros__parameters:
     type: joint_trajectory_controller/JointGroupVelocityController
-    joints: ["wheel_1_joint", "wheel_2_joint", "wheel_3_joint"]
+    joints: ["joint_1", "joint_2", "joint_3"]
 ```
 
 Make sure your URDF uses the same joint names.
