@@ -25,14 +25,16 @@ This driver handles the **inverse kinematics**, takes velocity commands from `/c
 
 ```
 
-omnidirectional_driver/
+<your-workspace>/src/omnidirectional_driver/
 │── omnidirectional_driver/
-│     └── omni_driver.py           # Main ROS 2 node (Kinematics logic)
-│     └── robot_params.py          # Data structure for robot geometry
-│── package.xml
-│── setup.py
+│     ├── __init__.py           # Empty file
+│     ├── omni_driver.py        # Main ROS 2 node (Kinematics logic)
+│     └── robot_params.py       # Data structure for robot geometry
 │── resource/
 │── test/
+│── package.xml
+│── setup.cfg
+└── setup.py
 
 ```
 
@@ -124,7 +126,7 @@ omnidirectional_driver:
 Send a velocity command to move the robot:
 
 ```bash
-ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.2, y: 0.0}}, {angular: {z: 0.1}}"
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.2, y: 0.0}, angular: {z: 0.1}}"
 ```
 
 ---
