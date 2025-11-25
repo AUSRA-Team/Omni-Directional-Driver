@@ -83,7 +83,7 @@ omnidirectional_driver:
     # ----------------------------------------
     # Physical Robot Parameters
     # ----------------------------------------
-    
+
     robot_radius: 0.115     # Distance from center to wheel contact point
     wheel_radius: 0.03      # Physical radius of the wheel
     
@@ -177,57 +177,7 @@ Make sure your URDF uses the same joint names.
 
 ---
 
-# 9. Kinematics (Short Explanation)
-
-The 3-wheel omni robot has wheels placed at angles:
-
-[
-\phi_1, \ \phi_2, \ \phi_3
-]
-
-Each wheel measures motion along its tangent direction.
-For a robot twist:
-
-[
-[v_x, \ v_y, \ \omega_z]
-]
-
-The **inverse kinematics equation** for wheel ( i ) is:
-
-[
-\omega_i = \frac{1}{r_w}
-(\cos\phi_i , v_x + \sin\phi_i , v_y - R\omega_z)
-]
-
-Where:
-
-| Symbol       | Meaning                |
-| ------------ | ---------------------- |
-| ( r_w )      | Wheel radius           |
-| ( R )        | Robot radius           |
-| ( \phi_i )   | Wheel mounting angle   |
-| ( \omega_i ) | Wheel angular velocity |
-
-### Matrix Form (used in code)
-
-[
-\mathbf{ω} =
-\frac{1}{r_w}
-\begin{bmatrix}
-\cos\phi_1 & \sin\phi_1 & -R \
-\cos\phi_2 & \sin\phi_2 & -R \
-\cos\phi_3 & \sin\phi_3 & -R
-\end{bmatrix}
-\begin{bmatrix}
-v_x \ v_y \ \omega_z
-\end{bmatrix}
-]
-
-This matrix is automatically generated at startup from your YAML config.
-
----
-
-# 10. Troubleshooting
+# 9. Troubleshooting
 
 ### 1. Robot moves sideways or rotates unexpectedly
 
@@ -255,13 +205,13 @@ ros2 topic echo /joint_group_velocity_controller/commands
 
 ---
 
-# 12. License
+# 10. License
 
 MIT | Apache 2.0 | BSD — choose your preferred license.
 
 ---
 
-# 13. Author
+# 11. Author
 
 AUSRA-Team (2025)
 Custom 3-Wheeled Omni-Directional Robot Driver
