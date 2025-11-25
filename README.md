@@ -27,7 +27,7 @@ This driver handles the **inverse kinematics**, takes velocity commands from `/c
 
 omnidirectional_driver/
 │── omnidirectional_driver/
-│     └── omni_driver.py           # Main ROS 2 node (IK logic)
+│     └── omni_driver.py           # Main ROS 2 node (Kinematics logic)
 │     └── robot_params.py          # Data structure for robot geometry
 │── package.xml
 │── setup.py
@@ -55,7 +55,7 @@ sudo apt install -y python3-colcon-common-extensions build-essential
 ```bash
 mkdir -p ~/<your-workspace>/src
 cd ~/<your-workspace>/src
-git clone https://github.com/AUSRA-Team/Omni-Directional-Driver.git omni_driver
+git clone https://github.com/AUSRA-Team/Omni-Directional-Driver.git omnidirectional_driver
 ```
 
 ### Build
@@ -63,7 +63,7 @@ git clone https://github.com/AUSRA-Team/Omni-Directional-Driver.git omni_driver
 ```bash
 cd ~/<your-workspace>
 source /opt/ros/$ROS_DISTRO/setup.bash
-colcon build
+colcon build --packages-select omnidirectional_driver
 source install/setup.bash
 ```
 
@@ -80,17 +80,26 @@ Example:
 ```yaml
 omnidirectional_driver:
   ros__parameters:
-
-    wheel_names: ["joint_1", "joint_2", "joint_3"]
-
+    # ----------------------------------------
+    # Physical Robot Parameters
+    # ----------------------------------------
+    
     robot_radius: 0.115     # Distance from center to wheel contact point
     wheel_radius: 0.03      # Physical radius of the wheel
+    
+    wheel_names: 
+      - joint_1
+      - joint_2
+      - joint_3
+
+    # ----------------------------------------
+    # Kinematic Geometry
+    # ----------------------------------------
 
     # Wheel mounting angles (Wheel_frame -> Robot_frame) [degrees]
     ## 3-wheel omni: 0°, 120°, 240° is standard
     ## For our robot: 270°, 30°, 150°
     wheel_angles_deg: [270.0, 30.0, 150.0]
-
 
     # Omni wheel roller angle (Roller_frame -> Wheel_frame) [degrees]
     ## For Omni-wheels: 0°
