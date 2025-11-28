@@ -1,4 +1,4 @@
-#include "omnidirectional_driver_cpp/omnidirectional_driver.hpp"
+#include "omnidirectional_driver/omnidirectional_driver.hpp"
 
 #include <cmath>
 #include <algorithm>

@@ -1,4 +1,4 @@
-#include "omnidirectional_driver_cpp/omni_kinematics.hpp"
+#include "omnidirectional_driver/omni_kinematics.hpp"
 
 namespace omnidirectional_driver
 {

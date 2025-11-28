@@ -12,8 +12,8 @@
 #include "nav_msgs/msg/odometry.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 
-#include "omnidirectional_driver_cpp/visibility_control.hpp"
-#include "omnidirectional_driver_cpp/omni_kinematics.hpp"
+#include "omnidirectional_driver/visibility_control.hpp"
+#include "omnidirectional_driver/omni_kinematics.hpp"
 
 namespace omnidirectional_driver
 {
