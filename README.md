@@ -26,15 +26,15 @@ This driver handles the **inverse kinematics**, takes velocity commands from `/c
 ```
 
 <your-workspace>/src/omnidirectional_driver/
-│── omnidirectional_driver/
-│     ├── __init__.py           # Empty file
-│     ├── omni_driver.py        # Main ROS 2 node (Kinematics logic)
-│     └── robot_params.py       # Data structure for robot geometry
-│── resource/
-│── test/
-│── package.xml
-│── setup.cfg
-└── setup.py
+│── include/omnidirectional_driver
+│     ├── omni_kinematics.hpp         # Kinematics math functions
+│     ├── omnidirectional_driver.hpp  # Driver class Node
+│     └── visibility_control.hpp      # 
+│── src/
+│     ├── omni_kinematics.cpp         # Kinematics math functions
+│     └── omnidirectional_driver.cpp  # Driver class Node
+├── CMakeLists.txt
+└── package.xml
 
 ```
 
@@ -86,8 +86,8 @@ omnidirectional_driver:
     # Physical Robot Parameters
     # ----------------------------------------
 
-    robot_radius: 0.115     # Distance from center to wheel contact point
-    wheel_radius: 0.03      # Physical radius of the wheel
+    robot_radius: 0.1105     # Distance from center to wheel contact point
+    wheel_radius: 0.034      # Physical radius of the wheel
     
     wheel_names: 
       - joint_1
@@ -217,5 +217,3 @@ MIT | Apache 2.0 | BSD — choose your preferred license.
 
 AUSRA-Team (2025)
 Custom 3-Wheeled Omni-Directional Robot Driver
-
-```
