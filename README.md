@@ -3,8 +3,20 @@ A fully configurable ROS 2 driver for a **3-wheeled omni-directional (holonomic)
 This node converts `/cmd_vel` velocity commands into **wheel angular velocities** using your robot's geometry from a config file.
 
 Supports:  
-- **ROS 2 Humble** (Ubuntu 22.04)  
-- **ROS 2 Jazzy** (Ubuntu 24.04)
+- **ROS 2 Humble** (Ubuntu 22.04)
+- *C++ ROS2* 
+- *Python ROS2* 
+
+# Notes - important
+
+If you have cloned the Python driver repository previously, we made some new updates. The C++ version is now available.<br>
+All you need to do is to run these commands in your workspace after pull:
+
+### Convert the package from Python to C++
+```bash
+rm -rf build/omnidirectional_driver/ install/omnidirectional_driver/
+colcon build --packages-select omnidirectional_driver
+```
 
 ---
 
