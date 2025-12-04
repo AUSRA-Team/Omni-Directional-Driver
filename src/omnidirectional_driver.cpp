@@ -161,16 +161,16 @@ void OmniDriver::publish_odometry(
   q.setRPY(0, 0, state.theta);
   geometry_msgs::msg::Quaternion q_msg = tf2::toMsg(q);
 
-  // // TF
-  // geometry_msgs::msg::TransformStamped t;
-  // t.header.stamp = time_now;
-  // t.header.frame_id = odom_frame_id_;
-  // t.child_frame_id = base_frame_id_;
-  // t.transform.translation.x = state.x;
-  // t.transform.translation.y = state.y;
-  // t.transform.translation.z = 0.0;
-  // t.transform.rotation = q_msg;
-  // tf_broadcaster_->sendTransform(t);
+  // TF
+  geometry_msgs::msg::TransformStamped t;
+  t.header.stamp = time_now;
+  t.header.frame_id = odom_frame_id_;
+  t.child_frame_id = base_frame_id_;
+  t.transform.translation.x = state.x;
+  t.transform.translation.y = state.y;
+  t.transform.translation.z = 0.0;
+  t.transform.rotation = q_msg;
+  tf_broadcaster_->sendTransform(t);
 
   // Odom
   nav_msgs::msg::Odometry odom;
