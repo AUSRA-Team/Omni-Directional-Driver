@@ -157,9 +157,8 @@ void OmniDriver::publish_odometry(
   const Eigen::Vector3d & vel, 
   const rclcpp::Time & time_now)
 {
-  tf2::Quaternion q;
-  q.setRPY(0, 0, state.theta);
-  geometry_msgs::msg::Quaternion q_msg = tf2::toMsg(q);
+  tf2::Quaternion q_odom;
+  q_odom.setRPY(0, 0, state.theta);
 
   // TF
   geometry_msgs::msg::TransformStamped t;
@@ -169,18 +168,31 @@ void OmniDriver::publish_odometry(
   t.transform.translation.x = state.x;
   t.transform.translation.y = state.y;
   t.transform.translation.z = 0.0;
-  t.transform.rotation = q_msg;
+  t.transform.rotation = tf2::toMsg(q_odom);
   tf_broadcaster_->sendTransform(t);
+
+  geometry_msgs::msg::TransformStamped footprint_tf;
+  footprint_tf.header.stamp = time_now;
+  footprint_tf.header.frame_id = "robot_footprint";
+  footprint_tf.child_frame_id = "base_link";
+  footprint_tf.transform.translation.x = 0.0;
+  footprint_tf.transform.translation.y = 0.0;
+  footprint_tf.transform.translation.z = 0.0;
+
+  tf2::Quaternion q_footprint;
+  q_footprint.setRPY(0.0, 0.0, -1.558930266);  // from your URDF
+  footprint_tf.transform.rotation = tf2::toMsg(q_footprint);
+  tf_broadcaster_->sendTransform(footprint_tf);
 
   // Odom
   nav_msgs::msg::Odometry odom;
   odom.header.stamp = time_now;
-  odom.header.frame_id = odom_frame_id_;
-  odom.child_frame_id = base_frame_id_;
+  // odom.header.frame_id = odom_frame_id_;
+  // odom.child_frame_id = base_frame_id_;
   odom.pose.pose.position.x = state.x;
   odom.pose.pose.position.y = state.y;
   odom.pose.pose.position.z = 0.0;
-  odom.pose.pose.orientation = q_msg;
+  odom.pose.pose.orientation = tf2::toMsg(q_odom);
   
   odom.twist.twist.linear.x = vel(0);
   odom.twist.twist.linear.y = vel(1);
