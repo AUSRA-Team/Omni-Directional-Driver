@@ -29,10 +29,9 @@ void OmniKinematics::configure(const RobotParams & params)
   state_.pose_covariance.setZero();
 
   for (size_t i = 0; i < n; ++i) {
-    double angle = params_.phi_rad[i];
-    coupling_matrix_(i, 0) = std::cos(angle);
-    coupling_matrix_(i, 1) = std::sin(angle);
-    coupling_matrix_(i, 2) = -1.0 * params_.robot_radius;
+    coupling_matrix_(i, 0) = std::cos(params_.phi_rad[i] + params_.gamma_rad);
+    coupling_matrix_(i, 1) = std::sin(params_.phi_rad[i] + params_.gamma_rad);
+    coupling_matrix_(i, 2) = -1.0 * std::cos(params_.gamma_rad) * params_.robot_radius;
   }
 
   inv_coupling_matrix_ = coupling_matrix_.completeOrthogonalDecomposition().pseudoInverse();
@@ -55,7 +54,7 @@ const Eigen::VectorXd & OmniKinematics::calculate_wheel_commands(
 
   robot_vel_ << vx, vy, omega;
   temp_wheel_lin_vels_.noalias() = coupling_matrix_ * robot_vel_;
-  wheel_vels_.noalias() = temp_wheel_lin_vels_ / params_.wheel_radius;
+  wheel_vels_.noalias() = temp_wheel_lin_vels_ / (std::cos(params_.gamma_rad) * params_.wheel_radius);
 
   return wheel_vels_;
 }
@@ -69,7 +68,7 @@ const Eigen::Vector3d & OmniKinematics::calculate_robot_velocity(const Eigen::Ve
   }
 
   // 1. Calculate Linear Wheel Velocities
-  temp_wheel_lin_vels_.noalias() = wheel_angular_vels * params_.wheel_radius;
+  temp_wheel_lin_vels_.noalias() = wheel_angular_vels * (std::cos(params_.gamma_rad) * params_.wheel_radius);
   
   // 2. Forward Kinematics
   calc_robot_vel_.noalias() = inv_coupling_matrix_ * temp_wheel_lin_vels_;
@@ -141,8 +140,7 @@ const OdometryState & OmniKinematics::integrate_odometry(const Eigen::Vector3d &
   // Process Noise Q = G * TwistCovariance * G^T
   Eigen::Matrix3d Q = G * twist_covariance_ * G.transpose();
 
-  // Apply empirical scales to accumulated position covariance (Future work)
-  
+  // Apply empirical scales to process each wheel's noise contribution [Future Work: More Sophisticated Noise Models]
   // P_k = F * P_k-1 * F^T + Q
   state_.pose_covariance = F * state_.pose_covariance * F.transpose() + Q;
   

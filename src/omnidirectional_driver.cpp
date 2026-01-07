@@ -209,17 +209,17 @@ void OmniDriver::publish_odometry(
   tf_broadcaster_->sendTransform(t);
 
   // Static footprint transform
-  geometry_msgs::msg::TransformStamped footprint_tf;
-  footprint_tf.header.stamp = time_now;
-  footprint_tf.header.frame_id = "robot_footprint";
-  footprint_tf.child_frame_id = "base_link";
-  footprint_tf.transform.translation.x = 0.0;
-  footprint_tf.transform.translation.y = 0.0;
-  footprint_tf.transform.translation.z = 0.0;
-  tf2::Quaternion q_footprint;
-  q_footprint.setRPY(0.0, 0.0, -1.558930266);
-  footprint_tf.transform.rotation = tf2::toMsg(q_footprint);
-  tf_broadcaster_->sendTransform(footprint_tf);
+  // geometry_msgs::msg::TransformStamped footprint_tf;
+  // footprint_tf.header.stamp = time_now;
+  // footprint_tf.header.frame_id = "robot_footprint";
+  // footprint_tf.child_frame_id = "base_link";
+  // footprint_tf.transform.translation.x = 0.0;
+  // footprint_tf.transform.translation.y = 0.0;
+  // footprint_tf.transform.translation.z = 0.0;
+  // tf2::Quaternion q_footprint;
+  // q_footprint.setRPY(0.0, 0.0, -1.558930266);
+  // footprint_tf.transform.rotation = tf2::toMsg(q_footprint);
+  // tf_broadcaster_->sendTransform(footprint_tf);
 
   // Odom Message
   nav_msgs::msg::Odometry odom;
