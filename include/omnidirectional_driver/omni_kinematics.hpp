@@ -19,6 +19,12 @@ struct RobotParams
   std::vector<double> wheel_direction_correction;
   bool use_field_centric = false;
   
+  // Covariance / Noise Parameters
+  int encoder_ppr = 1024; // Pulses Per Revolution
+  double covariance_scale_xy = 1.0;
+  double covariance_scale_yaw = 1.0;
+  double covariance_scale_vel = 1.0; // Multiplier for twist covariance
+
   // Computed radians
   std::vector<double> phi_rad;
   double gamma_rad = 0.0;
@@ -29,6 +35,9 @@ struct OdometryState
   double x = 0.0;
   double y = 0.0;
   double theta = 0.0;
+  
+  // 3x3 Covariance Matrix (x, y, theta)
+  Eigen::Matrix3d pose_covariance = Eigen::Matrix3d::Zero();
 };
 
 class OmniKinematics
@@ -37,46 +46,42 @@ public:
   OmniKinematics() = default;
   ~OmniKinematics() = default;
 
-  /**
-   * @brief Pre-allocates matrices and pre-calculates trig values.
-   * Called once at startup to avoid runtime allocation.
-   */
   void configure(const RobotParams & params);
 
-  /**
-   * @brief High-performance Inverse Kinematics
-   * @return Reference to the internal result vector (avoids copy)
-   */
   const Eigen::VectorXd & calculate_wheel_commands(double vx, double vy, double omega, double current_heading);
 
   /**
-   * @brief High-performance Forward Kinematics
+   * @brief Calculates robot velocity and its covariance based on wheel velocities and dt.
+   * @param dt Time delta in seconds (required for theoretical noise calc)
    */
-  const Eigen::Vector3d & calculate_robot_velocity(const Eigen::VectorXd & wheel_angular_vels);
+  const Eigen::Vector3d & calculate_robot_velocity(const Eigen::VectorXd & wheel_angular_vels, double dt);
 
-  /**
-   * @brief Updates internal state
-   */
   const OdometryState & integrate_odometry(const Eigen::Vector3d & robot_vel, double dt);
 
   // Getters
   const OdometryState & get_state() const { return state_; }
   const RobotParams & get_params() const { return params_; }
+  
+  // Returns the instantaneous velocity covariance (3x3) calculated in calculate_robot_velocity
+  const Eigen::Matrix3d & get_twist_covariance() const { return twist_covariance_; }
 
 private:
   RobotParams params_;
   OdometryState state_;
 
-  // Pre-allocated Memory (Member Variables)
-  // We keep these here so we don't re-create them in the loop
+  // Matrices
   Eigen::MatrixXd coupling_matrix_;      // 3xN
   Eigen::MatrixXd inv_coupling_matrix_;  // Nx3
   
-  // Reuseable vectors for intermediate calculations
-  Eigen::Vector3d robot_vel_;            // [vx, vy, w]
-  Eigen::VectorXd wheel_vels_;           // Result buffer
-  Eigen::VectorXd temp_wheel_lin_vels_;  // Intermediate buffer
-  Eigen::Vector3d calc_robot_vel_;       // Result buffer
+  // Buffers
+  Eigen::Vector3d robot_vel_;
+  Eigen::VectorXd wheel_vels_;
+  Eigen::VectorXd temp_wheel_lin_vels_;
+  Eigen::Vector3d calc_robot_vel_;
+  
+  // Covariance Buffers
+  Eigen::Matrix3d twist_covariance_;     // Current velocity covariance (local frame)
+  Eigen::MatrixXd wheel_noise_matrix_;   // NxN diagonal matrix
 };
 
 }  // namespace omnidirectional_driver

@@ -17,7 +17,6 @@ OmniDriver::OmniDriver(const rclcpp::NodeOptions & options)
   
   last_time_ = this->get_clock()->now();
   
-  // Pre-allocate the vector size to avoid reallocation in the loop
   if (!kinematics_.get_params().wheel_names.empty()) {
     motor_cmd_msg_.data.resize(kinematics_.get_params().wheel_names.size(), 0.0);
   }
@@ -28,7 +27,6 @@ OmniDriver::OmniDriver(const rclcpp::NodeOptions & options)
 void OmniDriver::load_parameters()
 {
   RobotParams p;
-  // Declare parameters
   this->declare_parameter("wheel_names", std::vector<std::string>());
   this->declare_parameter("robot_radius", 0.0);
   this->declare_parameter("wheel_radius", 0.0);
@@ -37,6 +35,12 @@ void OmniDriver::load_parameters()
   this->declare_parameter("use_field_centric", false);
   this->declare_parameter("odom_frame_id", "odom");
   this->declare_parameter("base_frame_id", "robot_footprint");
+  
+  // Covariance params
+  this->declare_parameter("encoder_ppr", 1024);
+  this->declare_parameter("covariance_scale_xy", 1.0);
+  this->declare_parameter("covariance_scale_yaw", 1.0);
+  this->declare_parameter("covariance_scale_vel", 1.0);
 
   try {
     p.wheel_names = this->get_parameter("wheel_names").as_string_array();
@@ -46,19 +50,21 @@ void OmniDriver::load_parameters()
     p.roller_angle_deg = this->get_parameter("roller_angle_deg").as_double();
     p.use_field_centric = this->get_parameter("use_field_centric").as_bool();
     
-
     odom_frame_id_ = this->get_parameter("odom_frame_id").as_string();
     base_frame_id_ = this->get_parameter("base_frame_id").as_string();
+
+    p.encoder_ppr = this->get_parameter("encoder_ppr").as_int();
+    p.covariance_scale_xy = this->get_parameter("covariance_scale_xy").as_double();
+    p.covariance_scale_yaw = this->get_parameter("covariance_scale_yaw").as_double();
+    p.covariance_scale_vel = this->get_parameter("covariance_scale_vel").as_double();
 
   } catch (const rclcpp::exceptions::ParameterNotDeclaredException & e) {
     RCLCPP_FATAL(this->get_logger(), "Parameter Error: %s", e.what());
     throw;
   }
 
-  // Configure Math Logic
   kinematics_.configure(p);
 
-  // Check if configuration succeeded
   if (p.wheel_names.empty()) {
     RCLCPP_WARN(this->get_logger(), "WARNING: No wheel names found in parameters! Driver will be inactive.");
   }
@@ -85,7 +91,6 @@ void OmniDriver::init_interfaces()
 
 void OmniDriver::cmd_vel_callback(const geometry_msgs::msg::Twist::ConstSharedPtr msg)
 {
-  // 1. Calculate Motor Commands
   const Eigen::VectorXd & wheel_cmds = kinematics_.calculate_wheel_commands(
     msg->linear.x, 
     msg->linear.y, 
@@ -93,13 +98,10 @@ void OmniDriver::cmd_vel_callback(const geometry_msgs::msg::Twist::ConstSharedPt
     kinematics_.get_state().theta
   );
 
-  // 2. Publish (using pre-allocated message)
   size_t n = wheel_cmds.size();
-
-  // FIX: Safety check. If n is 0, DO NOT publish an empty message.
   if (n == 0) {
     RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, 
-        "Kinematics returned 0 commands. Check 'wheel_names' parameter in ausrabot_controller.yaml!");
+        "Kinematics returned 0 commands. Check 'wheel_names' parameter!");
     return;
   }
 
@@ -108,7 +110,6 @@ void OmniDriver::cmd_vel_callback(const geometry_msgs::msg::Twist::ConstSharedPt
   }
 
   for (size_t i = 0; i < n; ++i) {
-    // Removed correction multiplication
     motor_cmd_msg_.data[i] = wheel_cmds(i);
   }
   
@@ -138,7 +139,6 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
     auto it = std::find(msg->name.begin(), msg->name.end(), params.wheel_names[i]);
     if (it != msg->name.end()) {
       size_t idx = std::distance(msg->name.begin(), it);
-      // Removed correction multiplication
       wheel_vels(i) = msg->velocity[idx];
       found++;
     }
@@ -179,6 +179,10 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
   
   last_time_ = msg_time;
 
+  // 2. Forward Kinematics (Pass dt for covariance calc)
+  const Eigen::Vector3d & robot_vel = kinematics_.calculate_robot_velocity(wheel_vels, dt);
+
+  // 3. Integration
   const OdometryState & new_state = kinematics_.integrate_odometry(robot_vel, dt);
 
   // 4. Publish
@@ -204,9 +208,24 @@ void OmniDriver::publish_odometry(
   t.transform.rotation = tf2::toMsg(q_odom);
   tf_broadcaster_->sendTransform(t);
 
-  // Odom
+  // Static footprint transform
+  geometry_msgs::msg::TransformStamped footprint_tf;
+  footprint_tf.header.stamp = time_now;
+  footprint_tf.header.frame_id = "robot_footprint";
+  footprint_tf.child_frame_id = "base_link";
+  footprint_tf.transform.translation.x = 0.0;
+  footprint_tf.transform.translation.y = 0.0;
+  footprint_tf.transform.translation.z = 0.0;
+  tf2::Quaternion q_footprint;
+  q_footprint.setRPY(0.0, 0.0, -1.558930266);
+  footprint_tf.transform.rotation = tf2::toMsg(q_footprint);
+  tf_broadcaster_->sendTransform(footprint_tf);
+
+  // Odom Message
   nav_msgs::msg::Odometry odom;
   odom.header.stamp = time_now;
+  odom.header.frame_id = odom_frame_id_;
+  odom.child_frame_id = base_frame_id_;
   odom.header.frame_id = odom_frame_id_;
   odom.child_frame_id = base_frame_id_;
   odom.pose.pose.position.x = state.x;
@@ -217,6 +236,46 @@ void OmniDriver::publish_odometry(
   odom.twist.twist.linear.x = vel(0);
   odom.twist.twist.linear.y = vel(1);
   odom.twist.twist.angular.z = vel(2);
+
+  // Fill Covariances
+  // Default scale multiplication for Pose (Empirical tuning)
+  const auto & p = kinematics_.get_params();
+  
+  // Row-major 6x6. Indices: 0=xx, 7=yy, 35=thth
+  // Internal matrix is 3x3: 0,1,2 maps to x,y,th
+  
+  // Map Pose Covariance (Accumulated)
+  const Eigen::Matrix3d & P = state.pose_covariance;
+  
+  // X-row
+  odom.pose.covariance[0] = P(0,0) * p.covariance_scale_xy;
+  odom.pose.covariance[1] = P(0,1) * p.covariance_scale_xy;
+  odom.pose.covariance[5] = P(0,2) * p.covariance_scale_xy;
+  
+  // Y-row
+  odom.pose.covariance[6] = P(1,0) * p.covariance_scale_xy;
+  odom.pose.covariance[7] = P(1,1) * p.covariance_scale_xy;
+  odom.pose.covariance[11] = P(1,2) * p.covariance_scale_xy;
+
+  // Theta-row (mapped to index 35 -> element (5,5))
+  odom.pose.covariance[30] = P(2,0) * p.covariance_scale_yaw;
+  odom.pose.covariance[31] = P(2,1) * p.covariance_scale_yaw;
+  odom.pose.covariance[35] = P(2,2) * p.covariance_scale_yaw;
+
+  // Map Twist Covariance (Instantaneous)
+  const Eigen::Matrix3d & Q_vel = kinematics_.get_twist_covariance();
+  
+  odom.twist.covariance[0] = Q_vel(0,0);
+  odom.twist.covariance[1] = Q_vel(0,1);
+  odom.twist.covariance[5] = Q_vel(0,2);
+  
+  odom.twist.covariance[6] = Q_vel(1,0);
+  odom.twist.covariance[7] = Q_vel(1,1);
+  odom.twist.covariance[11] = Q_vel(1,2);
+  
+  odom.twist.covariance[30] = Q_vel(2,0);
+  odom.twist.covariance[31] = Q_vel(2,1);
+  odom.twist.covariance[35] = Q_vel(2,2);
 
   odom_pub_->publish(odom);
 }
