@@ -243,6 +243,7 @@ void OmniDriver::publish_odometry(
   
   // Row-major 6x6. Indices: 0=xx, 7=yy, 35=thth
   // Internal matrix is 3x3: 0,1,2 maps to x,y,th
+  odom.pose.covariance.fill(0.0);
   
   // Map Pose Covariance (Accumulated)
   const Eigen::Matrix3d & P = state.pose_covariance;
@@ -262,6 +263,9 @@ void OmniDriver::publish_odometry(
   odom.pose.covariance[31] = P(2,1) * p.covariance_scale_yaw;
   odom.pose.covariance[35] = P(2,2) * p.covariance_scale_yaw;
 
+  // Twist Covariance
+  odom.twist.covariance.fill(0.0);
+  
   // Map Twist Covariance (Instantaneous)
   const Eigen::Matrix3d & Q_vel = kinematics_.get_twist_covariance();
   
