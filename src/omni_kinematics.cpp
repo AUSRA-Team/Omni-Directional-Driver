@@ -47,12 +47,10 @@ const Eigen::VectorXd & OmniKinematics::calculate_wheel_commands(
   }
 
   if (params_.use_field_centric) {
-    double c_th = std::cos(current_heading);
-    double s_th = std::sin(current_heading);
     double global_vx = vx;
     double global_vy = vy;
-    vx = global_vx * c_th + global_vy * s_th;
-    vy = -global_vx * s_th + global_vy * c_th;
+    vx = global_vx * std::cos(current_heading) + global_vy * std::sin(current_heading);
+    vy = -global_vx * std::sin(current_heading) + global_vy * std::cos(current_heading);
   }
 
   robot_vel_ << vx, vy, omega;
@@ -108,8 +106,6 @@ const OdometryState & OmniKinematics::integrate_odometry(const Eigen::Vector3d &
   double vy = robot_vel(1);
   double omega = robot_vel(2);
   double th = state_.theta;
-  double c_th = std::cos(th);
-  double s_th = std::sin(th);
 
   // 1. Position Integration
   double dx_global = (vx * std::cos(th) - vy * std::sin(th)) * dt;
