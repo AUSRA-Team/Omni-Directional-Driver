@@ -1,0 +1,25 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/abdelrhman/ausra_gp/install/ausra_simulation/include/**",
+        "/home/abdelrhman/ausra_gp/install/omnidirectional_driver/include/**",
+        "/home/abdelrhman/ausra_gp/src/install/ausra_simulation/include/**",
+        "/home/abdelrhman/ausra_gp/src/install/omnidirectional_driver/include/**",
+        "/opt/ros/humble/include/**",
+        "/home/abdelrhman/ausra_gp/src/Omni-Directional-Driver/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ros2",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++17"
+    }
+  ],
+  "version": 4
+}

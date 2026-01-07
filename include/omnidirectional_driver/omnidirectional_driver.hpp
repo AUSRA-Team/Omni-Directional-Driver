@@ -48,6 +48,7 @@ private:
   std::string odom_frame_id_;
   std::string base_frame_id_;
   rclcpp::Time last_time_;
+  bool first_joint_state_received_{false};
 
   // Interfaces
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;

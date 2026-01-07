@@ -121,6 +121,14 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
   size_t n_wheels = params.wheel_names.size();
   if (n_wheels == 0) return;
 
+  // Use message timestamp instead of node clock for proper simulation time handling
+  rclcpp::Time msg_time(msg->header.stamp);
+  
+  // Skip if message has no valid timestamp
+  if (msg_time.nanoseconds() == 0) {
+    return;
+  }
+
   // 1. Parse Joint States
   // Using Eigen vector directly
   Eigen::VectorXd wheel_vels = Eigen::VectorXd::Zero(n_wheels);
@@ -141,15 +149,40 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
   // 2. Forward Kinematics
   const Eigen::Vector3d & robot_vel = kinematics_.calculate_robot_velocity(wheel_vels);
 
-  // 3. Integration
-  rclcpp::Time now = this->get_clock()->now();
-  double dt = (now - last_time_).seconds();
-  last_time_ = now;
+  // 3. Integration with proper dt handling using message timestamps
+  // Skip first callback to establish proper time baseline
+  if (!first_joint_state_received_) {
+    first_joint_state_received_ = true;
+    last_time_ = msg_time;
+    // Don't integrate on first callback, just set time
+    publish_odometry(kinematics_.get_state(), robot_vel, msg_time);
+    return;
+  }
+  
+  double dt = (msg_time - last_time_).seconds();
+  
+  // Sanity check: skip if dt is unreasonable (too small or too large)
+  // Accept dt >= 0.001 (1ms) which is Gazebo's physics rate
+  if (dt < 0.0005 || dt > 0.5) {
+    if (dt < 0.0) {
+      // Time went backwards (simulation reset) - reset everything
+      RCLCPP_WARN(this->get_logger(), "Time went backwards, resetting odometry");
+      first_joint_state_received_ = false;
+    }
+    // Don't update last_time_ for dt=0 case, wait for next unique timestamp
+    if (dt >= 0.0005) {
+      last_time_ = msg_time;
+    }
+    publish_odometry(kinematics_.get_state(), robot_vel, msg_time);
+    return;
+  }
+  
+  last_time_ = msg_time;
 
   const OdometryState & new_state = kinematics_.integrate_odometry(robot_vel, dt);
 
   // 4. Publish
-  publish_odometry(new_state, robot_vel, now);
+  publish_odometry(new_state, robot_vel, msg_time);
 }
 
 void OmniDriver::publish_odometry(
@@ -171,24 +204,11 @@ void OmniDriver::publish_odometry(
   t.transform.rotation = tf2::toMsg(q_odom);
   tf_broadcaster_->sendTransform(t);
 
-  geometry_msgs::msg::TransformStamped footprint_tf;
-  footprint_tf.header.stamp = time_now;
-  footprint_tf.header.frame_id = "robot_footprint";
-  footprint_tf.child_frame_id = "base_link";
-  footprint_tf.transform.translation.x = 0.0;
-  footprint_tf.transform.translation.y = 0.0;
-  footprint_tf.transform.translation.z = 0.0;
-
-  tf2::Quaternion q_footprint;
-  q_footprint.setRPY(0.0, 0.0, -1.558930266);  // from your URDF
-  footprint_tf.transform.rotation = tf2::toMsg(q_footprint);
-  tf_broadcaster_->sendTransform(footprint_tf);
-
   // Odom
   nav_msgs::msg::Odometry odom;
   odom.header.stamp = time_now;
-  // odom.header.frame_id = odom_frame_id_;
-  // odom.child_frame_id = base_frame_id_;
+  odom.header.frame_id = odom_frame_id_;
+  odom.child_frame_id = base_frame_id_;
   odom.pose.pose.position.x = state.x;
   odom.pose.pose.position.y = state.y;
   odom.pose.pose.position.z = 0.0;
