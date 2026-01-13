@@ -195,6 +195,7 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
 
   // Publish
   publish_odometry(new_state, robot_vel, Q_vel, msg_time);
+  publish__twist_covariance(Q_vel, msg_time);
 }
 
 void OmniDriver::publish_odometry(
