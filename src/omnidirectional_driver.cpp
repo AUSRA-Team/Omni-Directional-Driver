@@ -86,6 +86,9 @@ void OmniDriver::init_interfaces()
     "/joint_group_velocity_controller/commands", qos);
 
   odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/odom", qos);
+  
+  twist_cov_pub_ = this->create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>("/twist_with_covariance", qos);
+
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 }
 
@@ -122,16 +125,14 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
   size_t n_wheels = params.wheel_names.size();
   if (n_wheels == 0) return;
 
-  // Use message timestamp instead of node clock for proper simulation time handling
   rclcpp::Time msg_time(msg->header.stamp);
-  
+
   // Skip if message has no valid timestamp
-  if (msg_time.nanoseconds() == 0) {
+  if (msg_time.nanoseconds() <= 0) {
     return;
   }
 
   // 1. Parse Joint States
-  // Using Eigen vector directly
   Eigen::VectorXd wheel_vels = Eigen::VectorXd::Zero(n_wheels);
   int found = 0;
 
@@ -146,52 +147,60 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
 
   if (found < 3) return;
 
-  // 2. Forward Kinematics
-  const Eigen::Vector3d & robot_vel = kinematics_.calculate_robot_velocity(wheel_vels);
-
-  // 3. Integration with proper dt handling using message timestamps
-  // Skip first callback to establish proper time baseline
+  // 2. Time Logic Handling
+  
+  // Case: First run initialization
   if (!first_joint_state_received_) {
     first_joint_state_received_ = true;
     last_time_ = msg_time;
-    // Don't integrate on first callback, just set time
-    publish_odometry(kinematics_.get_state(), robot_vel, msg_time);
-    return;
+    return; // Wait for the next callback to have a valid interval
   }
-  
+
   double dt = (msg_time - last_time_).seconds();
-  
-  // Sanity check: skip if dt is unreasonable (too small or too large)
-  // Accept dt >= 0.001 (1ms) which is Gazebo's physics rate
-  if (dt < 0.0005 || dt > 0.5) {
-    if (dt < 0.0) {
-      // Time went backwards (simulation reset) - reset everything
-      RCLCPP_WARN(this->get_logger(), "Time went backwards, resetting odometry");
-      first_joint_state_received_ = false;
-    }
-    // Don't update last_time_ for dt=0 case, wait for next unique timestamp
-    if (dt >= 0.0005) {
-      last_time_ = msg_time;
-    }
-    publish_odometry(kinematics_.get_state(), robot_vel, msg_time);
+
+  // Case: Time went backwards (Simulation reset or clock jump)
+  if (dt < 0.0) {
+    RCLCPP_WARN(this->get_logger(), "Time went backwards (dt=%f). Resetting odometry state.", dt);
+    first_joint_state_received_ = false;
+    kinematics_.reset_state();
     return;
   }
-  
+
+  // Case: Duplicate message or negligible time step (Jitter filter)
+  // By returning here WITHOUT updating last_time_, we allow dt to accumulate
+  // until the next callback, ensuring the next calculation uses a healthy dt.
+  if (dt < 0.0005) {
+    return;
+  }
+
+  // Case: Massive time jump (System lag or pause)
+  // If we integrate over a huge gap, the robot will "teleport" or gain massive error.
+  // We reset the time anchor and skip this update.
+  if (dt > 0.5) {
+    RCLCPP_WARN(this->get_logger(), "Large time jump detected (dt=%f). Skipping integration step.", dt);
+    last_time_ = msg_time;
+    return;
+  }
+
+  // 3. Main Update Loop (Only runs if dt is valid)
   last_time_ = msg_time;
 
-  // 2. Forward Kinematics (Pass dt for covariance calc)
+  // Forward Kinematics: Calculate Robot Velocity
   const Eigen::Vector3d & robot_vel = kinematics_.calculate_robot_velocity(wheel_vels, dt);
 
-  // 3. Integration
+  // Integration: Update Odometry Position (x, y, theta)
   const OdometryState & new_state = kinematics_.integrate_odometry(robot_vel, dt);
 
-  // 4. Publish
-  publish_odometry(new_state, robot_vel, msg_time);
+  const Eigen::Matrix3d & Q_vel = kinematics_.get_twist_covariance();
+
+  // Publish
+  publish_odometry(new_state, robot_vel, Q_vel, msg_time);
 }
 
 void OmniDriver::publish_odometry(
-  const OdometryState & state, 
-  const Eigen::Vector3d & vel, 
+  const OdometryState & state,
+  const Eigen::Vector3d & vel,
+  const Eigen::Matrix3d & Q_vel,
   const rclcpp::Time & time_now)
 {
   tf2::Quaternion q_odom;
@@ -208,24 +217,9 @@ void OmniDriver::publish_odometry(
   t.transform.rotation = tf2::toMsg(q_odom);
   tf_broadcaster_->sendTransform(t);
 
-  // Static footprint transform
-  // geometry_msgs::msg::TransformStamped footprint_tf;
-  // footprint_tf.header.stamp = time_now;
-  // footprint_tf.header.frame_id = "robot_footprint";
-  // footprint_tf.child_frame_id = "base_link";
-  // footprint_tf.transform.translation.x = 0.0;
-  // footprint_tf.transform.translation.y = 0.0;
-  // footprint_tf.transform.translation.z = 0.0;
-  // tf2::Quaternion q_footprint;
-  // q_footprint.setRPY(0.0, 0.0, -1.558930266);
-  // footprint_tf.transform.rotation = tf2::toMsg(q_footprint);
-  // tf_broadcaster_->sendTransform(footprint_tf);
-
   // Odom Message
   nav_msgs::msg::Odometry odom;
   odom.header.stamp = time_now;
-  odom.header.frame_id = odom_frame_id_;
-  odom.child_frame_id = base_frame_id_;
   odom.header.frame_id = odom_frame_id_;
   odom.child_frame_id = base_frame_id_;
   odom.pose.pose.position.x = state.x;
@@ -246,29 +240,25 @@ void OmniDriver::publish_odometry(
   odom.pose.covariance.fill(0.0);
   
   // Map Pose Covariance (Accumulated)
-  const Eigen::Matrix3d & P = state.pose_covariance;
-  
   // X-row
-  odom.pose.covariance[0] = P(0,0) * p.covariance_scale_xy;
-  odom.pose.covariance[1] = P(0,1) * p.covariance_scale_xy;
-  odom.pose.covariance[5] = P(0,2) * p.covariance_scale_xy;
+  odom.pose.covariance[0] = state.pose_covariance(0,0) * p.covariance_scale_xy;
+  odom.pose.covariance[1] = state.pose_covariance(0,1) * p.covariance_scale_xy;
+  odom.pose.covariance[5] = state.pose_covariance(0,2) * p.covariance_scale_xy;
   
   // Y-row
-  odom.pose.covariance[6] = P(1,0) * p.covariance_scale_xy;
-  odom.pose.covariance[7] = P(1,1) * p.covariance_scale_xy;
-  odom.pose.covariance[11] = P(1,2) * p.covariance_scale_xy;
+  odom.pose.covariance[6] = state.pose_covariance(1,0) * p.covariance_scale_xy;
+  odom.pose.covariance[7] = state.pose_covariance(1,1) * p.covariance_scale_xy;
+  odom.pose.covariance[11] = state.pose_covariance(1,2) * p.covariance_scale_xy;
 
-  // Theta-row (mapped to index 35 -> element (5,5))
-  odom.pose.covariance[30] = P(2,0) * p.covariance_scale_yaw;
-  odom.pose.covariance[31] = P(2,1) * p.covariance_scale_yaw;
-  odom.pose.covariance[35] = P(2,2) * p.covariance_scale_yaw;
+  // Theta-row (mapped to instate.pose_covariancex 35 -> element (5,5))
+  odom.pose.covariance[30] = state.pose_covariance(2,0) * p.covariance_scale_yaw;
+  odom.pose.covariance[31] = state.pose_covariance(2,1) * p.covariance_scale_yaw;
+  odom.pose.covariance[35] = state.pose_covariance(2,2) * p.covariance_scale_yaw;
 
   // Twist Covariance
   odom.twist.covariance.fill(0.0);
   
   // Map Twist Covariance (Instantaneous)
-  const Eigen::Matrix3d & Q_vel = kinematics_.get_twist_covariance();
-  
   odom.twist.covariance[0] = Q_vel(0,0);
   odom.twist.covariance[1] = Q_vel(0,1);
   odom.twist.covariance[5] = Q_vel(0,2);
@@ -282,6 +272,33 @@ void OmniDriver::publish_odometry(
   odom.twist.covariance[35] = Q_vel(2,2);
 
   odom_pub_->publish(odom);
+}
+
+void OmniDriver::publish__twist_covariance(
+  const Eigen::Matrix3d & Q_vel,
+  const rclcpp::Time & time_now
+)
+{
+  // Twist Covariance
+  geometry_msgs::msg::TwistWithCovarianceStamped twist_msg;
+  twist_msg.header.stamp = time_now;
+  twist_msg.header.frame_id = base_frame_id_;
+  twist_msg.twist.covariance.fill(0.0);
+
+  // Map Twist Covariance (Instantaneous)
+  twist_msg.twist.covariance[0] = Q_vel(0,0);
+  twist_msg.twist.covariance[1] = Q_vel(0,1);
+  twist_msg.twist.covariance[5] = Q_vel(0,2);
+
+  twist_msg.twist.covariance[6] = Q_vel(1,0);
+  twist_msg.twist.covariance[7] = Q_vel(1,1);
+  twist_msg.twist.covariance[11] = Q_vel(1,2);
+
+  twist_msg.twist.covariance[30] = Q_vel(2,0);
+  twist_msg.twist.covariance[31] = Q_vel(2,1);
+  twist_msg.twist.covariance[35] = Q_vel(2,2);
+
+  twist_cov_pub_->publish(twist_msg);
 }
 
 }  // namespace omnidirectional_driver

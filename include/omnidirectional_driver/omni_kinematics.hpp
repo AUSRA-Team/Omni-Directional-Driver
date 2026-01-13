@@ -48,6 +48,8 @@ public:
 
   void configure(const RobotParams & params);
 
+  void reset_state();
+
   const Eigen::VectorXd & calculate_wheel_commands(double vx, double vy, double omega, double current_heading);
 
   /**

@@ -37,6 +37,14 @@ void OmniKinematics::configure(const RobotParams & params)
   inv_coupling_matrix_ = coupling_matrix_.completeOrthogonalDecomposition().pseudoInverse();
 }
 
+void OmniKinematics::reset_state()
+{
+  state_.x = 0.0;
+  state_.y = 0.0;
+  state_.theta = 0.0;
+  state_.pose_covariance = Eigen::Matrix3d::Zero();
+}
+
 const Eigen::VectorXd & OmniKinematics::calculate_wheel_commands(
   double vx, double vy, double omega, double current_heading)
 {

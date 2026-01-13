@@ -37,9 +37,16 @@ private:
   void joint_state_callback(const sensor_msgs::msg::JointState::ConstSharedPtr msg);
 
   // --- Helpers ---
-  void publish_odometry(const OdometryState & state, 
-                        const Eigen::Vector3d & velocity, 
-                        const rclcpp::Time & time_now);
+  void publish_odometry(const OdometryState & state,
+                        const Eigen::Vector3d & vel,
+                        const Eigen::Matrix3d & Q_vel,
+                        const rclcpp::Time & time_now
+  );
+
+  void publish__twist_covariance(
+    const Eigen::Matrix3d & Q_vel,
+    const rclcpp::Time & time_now
+  );
 
   // --- Core Logic ---
   OmniKinematics kinematics_;
@@ -55,6 +62,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr motor_cmd_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr twist_cov_pub_;
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
   // Pre-allocated messages to avoid runtime allocation
