@@ -176,11 +176,11 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
   // Case: Massive time jump (System lag or pause)
   // If we integrate over a huge gap, the robot will "teleport" or gain massive error.
   // We reset the time anchor and skip this update.
-  if (dt > 0.5) {
-    RCLCPP_WARN(this->get_logger(), "Large time jump detected (dt=%f). Skipping integration step.", dt);
-    last_time_ = msg_time;
-    return;
-  }
+  // if (dt > 0.5) {
+  //   RCLCPP_WARN(this->get_logger(), "Large time jump detected (dt=%f). Skipping integration step.", dt);
+  //   last_time_ = msg_time;
+  //   return;
+  // }
 
   // 3. Main Update Loop (Only runs if dt is valid)
   last_time_ = msg_time;
@@ -195,7 +195,7 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
 
   // Publish
   publish_odometry(new_state, robot_vel, Q_vel, msg_time);
-  publish__twist_covariance(Q_vel, msg_time);
+  publish_twist_covariance(Q_vel, msg_time);
 }
 
 void OmniDriver::publish_odometry(
@@ -275,7 +275,7 @@ void OmniDriver::publish_odometry(
   odom_pub_->publish(odom);
 }
 
-void OmniDriver::publish__twist_covariance(
+void OmniDriver::publish_twist_covariance(
   const Eigen::Matrix3d & Q_vel,
   const rclcpp::Time & time_now
 )

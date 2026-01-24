@@ -44,7 +44,7 @@ private:
                         const rclcpp::Time & time_now
   );
 
-  void publish__twist_covariance(
+  void publish_twist_covariance(
     const Eigen::Matrix3d & Q_vel,
     const rclcpp::Time & time_now
   );
