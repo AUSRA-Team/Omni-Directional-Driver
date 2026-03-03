@@ -10,6 +10,19 @@ This package converts linear and angular velocity commands (`/cmd_vel`) from the
 *   **ROS 2 Humble** (Ubuntu 22.04)
 *   **C++ Node** (Replacing the older Python version)
 
+## Dependencies & Prerequisites
+
+Ensure the following ROS 2 controller and core packages are installed:
+```bash
+sudo apt update
+sudo apt install ros-humble-ros2-controllers \
+                 ros-humble-geometry-msgs \
+                 ros-humble-nav-msgs \
+                 ros-humble-tf2-ros \
+                 ros-humble-tf2-geometry-msgs
+```
+*(Note: `ros-humble-velocity-controllers` is specifically required to interpret the `Float64MultiArray` commands from this driver.)*
+
 ## Build Instructions
 
 If you previously used the Python version, ensure you clean up properly before building the new C++ driver:
