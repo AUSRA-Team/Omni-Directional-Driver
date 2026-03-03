@@ -7,7 +7,6 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/twist.hpp"
-#include "geometry_msgs/msg/twist_with_covariance_stamped.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "nav_msgs/msg/odometry.hpp"
@@ -40,14 +39,7 @@ private:
   // --- Helpers ---
   void publish_odometry(const OdometryState & state,
                         const Eigen::Vector3d & vel,
-                        const Eigen::Matrix3d & Q_vel,
-                        const rclcpp::Time & time_now
-  );
-
-  void publish_twist_covariance(
-    const Eigen::Matrix3d & Q_vel,
-    const rclcpp::Time & time_now
-  );
+                        const rclcpp::Time & time_now);
 
   // --- Core Logic ---
   OmniKinematics kinematics_;
@@ -55,6 +47,7 @@ private:
   // --- ROS Infrastructure ---
   std::string odom_frame_id_;
   std::string base_frame_id_;
+  bool publish_tf_{true};  // Whether to publish odom->base TF (disable when using EKF)
   rclcpp::Time last_time_;
   bool first_joint_state_received_{false};
 
@@ -63,7 +56,6 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr motor_cmd_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr twist_cov_pub_;
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
   // Pre-allocated messages to avoid runtime allocation
