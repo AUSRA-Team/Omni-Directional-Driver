@@ -1,231 +1,66 @@
-# Omni-Driver for 3-Wheeled Omni-Directional Robot  
-A fully configurable ROS 2 driver for a **3-wheeled omni-directional (holonomic) mobile robot** using inverse kinematics.  
-This node converts `/cmd_vel` velocity commands into **wheel angular velocities** using your robot's geometry from a config file.
+# Omni-Directional Driver
 
-Supports:  
-- **ROS 2 Humble** (Ubuntu 22.04)
-- *C++ ROS2* 
-- *Python ROS2* 
+A configurable ROS 2 C++ driver for a 3-wheeled omnidirectional (holonomic) mobile robot using inverse kinematics.
 
-# Notes - important
+## Package Overview
 
-If you have cloned the Python driver repository previously, we made some new updates. The C++ version is now available.<br>
-All you need to do is to run these commands in your workspace after pull:
+This package converts linear and angular velocity commands (`/cmd_vel`) from the navigation stack into individual wheel angular speeds for the three omni-wheels. It computes the inverse kinematics based on the robot's specific geometry and sends the corresponding actuator commands to a `ros2_control` velocity controller.
 
-### Convert the package from Python to C++
+### Supported Features
+*   **ROS 2 Humble** (Ubuntu 22.04)
+*   **C++ Node** (Replacing the older Python version)
+
+## Build Instructions
+
+If you previously used the Python version, ensure you clean up properly before building the new C++ driver:
 ```bash
+cd ~/ausra_gp
 rm -rf build/omnidirectional_driver/ install/omnidirectional_driver/
-colcon build --packages-select omnidirectional_driver
-```
-
----
-
-# 1. Introduction  
-
-This package provides a complete motion interface for omni-directional mobile robots that use **three omni wheels** positioned around the robot chassis. Unlike differential or mecanum drives, a 3-wheel omni robot can move:
-
-- Forward/backward  
-- Sideways (holonomic)  
-- Rotate while moving  
-- Move in any direction without changing orientation  
-
-This driver handles the **inverse kinematics**, takes velocity commands from `/cmd_vel`, computes each wheel’s angular speed, and sends them to a **ros2_control** velocity controller.
-
----
-
-# 2. Package Structure  
-
-```
-
-<your-workspace>/src/omnidirectional_driver/
-│── include/omnidirectional_driver
-│     ├── omni_kinematics.hpp         # Kinematics math functions
-│     ├── omnidirectional_driver.hpp  # Driver class Node
-│     └── visibility_control.hpp      # 
-│── src/
-│     ├── omni_kinematics.cpp         # Kinematics math functions
-│     └── omnidirectional_driver.cpp  # Driver class Node
-├── CMakeLists.txt
-└── package.xml
-
-```
-
----
-
-# 3. Installation  
-
-### Install ROS 2 build tools  
-```bash
-sudo apt update
-sudo apt install -y python3-colcon-common-extensions build-essential
-```
-
----
-
-# 4. Building the Package
-
-### Create a workspace
-
-```bash
-mkdir -p ~/<your-workspace>/src
-cd ~/<your-workspace>/src
-git clone https://github.com/AUSRA-Team/Omni-Directional-Driver.git omnidirectional_driver
-```
-
-### Build
-
-```bash
-cd ~/<your-workspace>
-source /opt/ros/$ROS_DISTRO/setup.bash
-colcon build --packages-select omnidirectional_driver
+colcon build --packages-select omnidirectional_driver --symlink-install
 source install/setup.bash
 ```
 
----
+## Running the Simulation (Workflow)
 
-# 5. Robot Configuration (YAML File)
+This driver is automatically loaded and utilized as part of the robot's bringup stack. You do not typically run this node standalone in the final simulation workflow.
 
-Your robot geometry must be defined in:
-
-`config/<your-robot-params>.yaml`
-
-Example:
-
-```yaml
-omnidirectional_driver:
-  ros__parameters:
-    # ----------------------------------------
-    # Physical Robot Parameters
-    # ----------------------------------------
-
-    robot_radius: 0.1105     # Distance from center to wheel contact point
-    wheel_radius: 0.034      # Physical radius of the wheel
-    
-    wheel_names: 
-      - joint_1
-      - joint_2
-      - joint_3
-
-    # ----------------------------------------
-    # Kinematic Geometry
-    # ----------------------------------------
-
-    # Wheel mounting angles (Wheel_frame -> Robot_frame) [degrees]
-    ## 3-wheel omni: 0°, 120°, 240° is standard
-    ## For our robot: 270°, 30°, 150°
-    wheel_angles_deg: [270.0, 30.0, 150.0]
-
-    # Omni wheel roller angle (Roller_frame -> Wheel_frame) [degrees]
-    ## For Omni-wheels: 0°
-    ## For Mecanum-wheels: 45°
-    roller_angle_deg: 0.0
-```
-
-### Parameter explanation
-
-| Parameter          | Meaning                                          |
-| ------------------ | ------------------------------------------------ |
-| `wheel_names`      | Joint names used by ros2_control                 |
-| `robot_radius`     | Distance from the robot center to each wheel     |
-| `wheel_radius`     | Physical wheel radius                            |
-| `wheel_angles_deg` | Mounting angle of each wheel in your robot frame |
-| `roller_angle_deg` | Roller angle for omni wheels                     |
-
----
-
-# 6. Publishing Commands to the Robot
-
-Send a velocity command to move the robot:
-
+However, if you wish to verify the driver in isolation after building it:
 ```bash
-ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.2, y: 0.0}, angular: {z: 0.1}}"
+ros2 run omnidirectional_driver omni_driver
 ```
+*Note: This driver listens to `/cmd_vel` and expects `joint_group_velocity_controller/commands` to be active in the system.*
 
----
+## Key Parameters & Tuning
 
-# 7. ROS 2 Interfaces
+The robot geometry used for inverse kinematics calculations is defined in `config/<your-robot-params>.yaml`.
 
-### **Subscribed Topics**
+### Physical Robot Parameters
 
-| Topic      | Type                  | Description            |
-| ---------- | --------------------- | ---------------------- |
-| `/cmd_vel` | `geometry_msgs/Twist` | Robot velocity command |
+*   `robot_radius`: `0.1105` (Distance from center to wheel contact point in meters).
+*   `wheel_radius`: `0.034` (Physical radius of the wheel in meters).
+*   `wheel_names`: Defines the ROS 2 Control joint names (e.g., `joint_1`, `joint_2`, `joint_3`).
 
-### **Published Topics**
+### Kinematic Geometry
 
-| Topic                                       | Type                | Description                         |
-| ------------------------------------------- | ------------------- | ----------------------------------- |
-| `/joint_group_velocity_controller/commands` | `Float64MultiArray` | Angular velocities for the 3 wheels |
+*   `wheel_angles_deg`: `[270.0, 30.0, 150.0]`
+    *   Mounting angle of each wheel relative to the robot's base frame. Must match the physical (or URDF) wheel order.
+*   `roller_angle_deg`: `0.0`
+    *   Roller angle for omni wheels (for Mecanum wheels, this would typically be 45 degrees).
 
----
+## ROS 2 Interfaces
 
-# 8. ROS 2 Control Integration
+### Subscribed Topics
+*   `/cmd_vel` (`geometry_msgs/Twist`): Receives the velocity command from the Navigation stack (or teleoperation).
 
-You must define a **JointGroupVelocityController**:
+### Published Topics
+*   `/joint_group_velocity_controller/commands` (`std_msgs/Float64MultiArray`): Publishes the computed angular velocities for the 3 wheels, directly feeding them to `ros2_control`.
 
-Example:
+## Troubleshooting
 
-```yaml
-controller_manager:
-  ros__parameters:
-    update_rate: 20  # Hz
-    use_sim_time: true
-
-    joint_state_broadcaster:
-      type: joint_state_broadcaster/JointStateBroadcaster
-
-    # Standard controller to handle the "Command Interface"
-    joint_group_velocity_controller:
-      type: velocity_controllers/JointGroupVelocityController
-
-# Configuration for the standard velocity controller
-joint_group_velocity_controller:
-  ros__parameters:
-    joints:
-      - joint_1
-      - joint_2
-      - joint_3
-```
-
-Make sure your URDF uses the same joint names.
-
----
-
-# 9. Troubleshooting
-
-### 1. Robot moves sideways or rotates unexpectedly
-
-* Check `wheel_angles_deg` order
-* Must match the **physical order** of wheels
-
-### 2. Wheel spins wrong direction
-
-* Fix URDF joint axis sign
-* OR negate the angle in YAML
-
-### 3. No motion output
-
-Check if controller is running:
-
-```bash
-ros2 control list_controllers
-```
-
-Echo motor commands:
-
-```bash
-ros2 topic echo /joint_group_velocity_controller/commands
-```
-
----
-
-# 10. License
-
-MIT | Apache 2.0 | BSD — choose your preferred license.
-
----
-
-# 11. Author
-
-AUSRA-Team (2025)
-Custom 3-Wheeled Omni-Directional Robot Driver
+1.  **Robot moves sideways when commanded forward, or rotates unexpectedly**:
+    *   Check `wheel_angles_deg` order in the YAML configuration. It MUST match the physical/URDF order of the wheels (`joint_1`, `joint_2`, `joint_3`).
+2.  **A specific wheel spins in the wrong direction**:
+    *   Verify the URDF joint axis sign. Alternatively, negate the corresponding angle in the YAML config.
+3.  **No motion output**:
+    *   Ensure the `joint_group_velocity_controller` is running via `ros2 control list_controllers`.
+    *   Echo the commands to verify the driver is calculating velocities: `ros2 topic echo /joint_group_velocity_controller/commands`.
