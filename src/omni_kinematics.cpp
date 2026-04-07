@@ -29,8 +29,8 @@ void OmniKinematics::configure(const RobotParams & params)
   state_.pose_covariance.setZero();
 
   for (size_t i = 0; i < n; ++i) {
-    coupling_matrix_(i, 0) = std::cos(params_.phi_rad[i] + params_.gamma_rad);
-    coupling_matrix_(i, 1) = std::sin(params_.phi_rad[i] + params_.gamma_rad);
+    coupling_matrix_(i, 0) = 1.0 * std::cos(params_.phi_rad[i] + params_.gamma_rad);
+    coupling_matrix_(i, 1) = 1.0 * std::sin(params_.phi_rad[i] + params_.gamma_rad);
     coupling_matrix_(i, 2) = -1.0 * std::cos(params_.gamma_rad) * params_.robot_radius;
   }
 

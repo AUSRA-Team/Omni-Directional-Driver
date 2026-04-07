@@ -94,12 +94,7 @@ void OmniDriver::init_interfaces()
 
 void OmniDriver::cmd_vel_callback(const geometry_msgs::msg::Twist::ConstSharedPtr msg)
 {
-  const Eigen::VectorXd & wheel_cmds = kinematics_.calculate_wheel_commands(
-    msg->linear.x, 
-    msg->linear.y, 
-    msg->angular.z, 
-    kinematics_.get_state().theta
-  );
+const Eigen::VectorXd & wheel_cmds = kinematics_.calculate_wheel_commands(msg->linear.x, msg->linear.y, msg->angular.z, kinematics_.get_state().theta);
 
   size_t n = wheel_cmds.size();
   if (n == 0) {
@@ -208,15 +203,15 @@ void OmniDriver::publish_odometry(
   q_odom.setRPY(0, 0, state.theta);
 
   // TF
-  geometry_msgs::msg::TransformStamped t;
-  t.header.stamp = time_now;
-  t.header.frame_id = odom_frame_id_;
-  t.child_frame_id = base_frame_id_;
-  t.transform.translation.x = state.x;
-  t.transform.translation.y = state.y;
-  t.transform.translation.z = 0.0;
-  t.transform.rotation = tf2::toMsg(q_odom);
-  tf_broadcaster_->sendTransform(t);
+  // geometry_msgs::msg::TransformStamped t;
+  // t.header.stamp = time_now;
+  // t.header.frame_id = odom_frame_id_;
+  // t.child_frame_id = base_frame_id_;
+  // t.transform.translation.x = state.x;
+  // t.transform.translation.y = state.y;
+  // t.transform.translation.z = 0.0;
+  // t.transform.rotation = tf2::toMsg(q_odom);
+  // tf_broadcaster_->sendTransform(t);
 
   // Odom Message
   nav_msgs::msg::Odometry odom;
