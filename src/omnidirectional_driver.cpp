@@ -63,19 +63,25 @@ void OmniDriver::load_parameters()
 
 void OmniDriver::init_interfaces()
 {
-  auto qos = rclcpp::QoS(10);
+  // We use SensorDataQoS because it is "Best Effort"
+  // This matches your Teleop node and your ESP32 micro-ROS settings
+  auto qos = rclcpp::SensorDataQoS();
 
+  // 1. Subscribe to Teleop (cmd_vel)
   cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
     "cmd_vel", qos, 
     std::bind(&OmniDriver::cmd_vel_callback, this, std::placeholders::_1));
 
+  // 2. Subscribe to ESP32 Feedback (joint_states)
   joint_state_sub_ = this->create_subscription<sensor_msgs::msg::JointState>(
     "joint_states", qos,
     std::bind(&OmniDriver::joint_state_callback, this, std::placeholders::_1));
 
+  // 3. Publish to ESP32 (motor commands)
   motor_cmd_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(
     "joint_group_velocity_controller/commands", qos);
 
+  // 4. Publish Odometry (Best Effort is usually better for high-rate odom)
   odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom", qos);
 
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
