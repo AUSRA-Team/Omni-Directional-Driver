@@ -120,14 +120,16 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
   size_t n_wheels = params.wheel_names.size();
   if (n_wheels == 0) return;
 
-  rclcpp::Time msg_time(msg->header.stamp);
+  // 1. Time Logic Handling & micro-ROS Sync Fix
+  rclcpp::Time msg_time = msg->header.stamp;
+  rclcpp::Time pc_time = this->now();
 
-  // Skip if message has no valid timestamp
-  if (msg_time.nanoseconds() <= 0) {
-    return;
+  // If ESP32 time is uninitialized (1970) or drifted by > 1s, override with PC time
+  if (msg_time.nanoseconds() <= 0 || std::abs((msg_time - pc_time).seconds()) > 1.0) {
+    msg_time = pc_time;
   }
 
-  // 1. Parse Joint States
+  // 2. Parse Joint States
   Eigen::VectorXd wheel_vels = Eigen::VectorXd::Zero(n_wheels);
   int found = 0;
 
@@ -140,15 +142,17 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
     }
   }
 
-  if (found < 3) return;
+  if (found < (int)n_wheels) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, 
+      "Received /joint_states but found only %d/%zu matching wheel names. Check ESP32 code vs hardware_params.yaml!", found, n_wheels);
+    return;
+  }
 
-  // 2. Time Logic Handling
-  
   // Case: First run initialization
   if (!first_joint_state_received_) {
     first_joint_state_received_ = true;
     last_time_ = msg_time;
-    return; // Wait for the next callback to have a valid interval
+    return;
   }
 
   double dt = (msg_time - last_time_).seconds();
