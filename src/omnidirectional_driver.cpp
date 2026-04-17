@@ -72,18 +72,13 @@ void OmniDriver::load_parameters()
 
 void OmniDriver::init_interfaces()
 {
-  auto qos = rclcpp::QoS(10);
+  auto qos = rclcpp::SensorDataQoS();
 
-  cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
-    "/cmd_vel", qos, 
-    std::bind(&OmniDriver::cmd_vel_callback, this, std::placeholders::_1));
+  cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>("/cmd_vel", qos, std::bind(&OmniDriver::cmd_vel_callback, this, std::placeholders::_1));
 
-  joint_state_sub_ = this->create_subscription<sensor_msgs::msg::JointState>(
-    "/joint_states", qos,
-    std::bind(&OmniDriver::joint_state_callback, this, std::placeholders::_1));
+  joint_state_sub_ = this->create_subscription<sensor_msgs::msg::JointState>("/joint_states", qos,std::bind(&OmniDriver::joint_state_callback, this, std::placeholders::_1));
 
-  motor_cmd_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(
-    "/joint_group_velocity_controller/commands", qos);
+  motor_cmd_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/joint_group_velocity_controller/commands", qos);
 
   odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/odom", qos);
   
@@ -110,8 +105,6 @@ const Eigen::VectorXd & wheel_cmds = kinematics_.calculate_wheel_commands(msg->l
   for (size_t i = 0; i < n; ++i) {
     motor_cmd_msg_.data[i] = wheel_cmds(i);
   }
-  
-  motor_cmd_pub_->publish(motor_cmd_msg_);
 }
 
 void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstSharedPtr msg)
@@ -168,20 +161,13 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
     return;
   }
 
-  // Case: Massive time jump (System lag or pause)
-  // If we integrate over a huge gap, the robot will "teleport" or gain massive error.
-  // We reset the time anchor and skip this update.
-  // if (dt > 0.5) {
-  //   RCLCPP_WARN(this->get_logger(), "Large time jump detected (dt=%f). Skipping integration step.", dt);
-  //   last_time_ = msg_time;
-  //   return;
-  // }
-
   // 3. Main Update Loop (Only runs if dt is valid)
   last_time_ = msg_time;
 
   // Forward Kinematics: Calculate Robot Velocity
   const Eigen::Vector3d & robot_vel = kinematics_.calculate_robot_velocity(wheel_vels, dt);
+
+  motor_cmd_pub_->publish(motor_cmd_msg_);
 
   // Integration: Update Odometry Position (x, y, theta)
   const OdometryState & new_state = kinematics_.integrate_odometry(robot_vel, dt);
