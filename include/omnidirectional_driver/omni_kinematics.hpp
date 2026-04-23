@@ -16,7 +16,6 @@ struct RobotParams
   double wheel_radius = 0.0;
   std::vector<double> wheel_angles_deg;
   double roller_angle_deg = 0.0;
-  std::vector<double> wheel_direction_correction;
   bool use_field_centric = false;
   
   // Covariance / Noise Parameters
@@ -28,6 +27,8 @@ struct RobotParams
   // Computed radians
   std::vector<double> phi_rad;
   double gamma_rad = 0.0;
+
+  double acceleration_limit = 1.0; // m/s^2
 };
 
 struct OdometryState

@@ -38,16 +38,9 @@ private:
   void joint_state_callback(const sensor_msgs::msg::JointState::ConstSharedPtr msg);
 
   // --- Helpers ---
-  void publish_odometry(const OdometryState & state,
-                        const Eigen::Vector3d & vel,
-                        const Eigen::Matrix3d & Q_vel,
-                        const rclcpp::Time & time_now
-  );
+  void publish_odometry(const OdometryState & state,const Eigen::Vector3d & vel,const Eigen::Matrix3d & Q_vel,const rclcpp::Time & time_now);
 
-  void publish_twist_covariance(
-    const Eigen::Matrix3d & Q_vel,
-    const rclcpp::Time & time_now
-  );
+  void publish_twist_covariance(const Eigen::Matrix3d & Q_vel,const rclcpp::Time & time_now);
 
   // --- Core Logic ---
   OmniKinematics kinematics_;
@@ -57,6 +50,7 @@ private:
   std::string base_frame_id_;
   rclcpp::Time last_time_;
   bool first_joint_state_received_{false};
+  bool publish_tf_{false};
 
   // Interfaces
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
@@ -68,6 +62,9 @@ private:
 
   // Pre-allocated messages to avoid runtime allocation
   std_msgs::msg::Float64MultiArray motor_cmd_msg_;
+
+  // Buffer for desired wheel commands
+  Eigen::VectorXd wheel_cmds_;
 };
 
 }  // namespace omnidirectional_driver

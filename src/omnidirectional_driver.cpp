@@ -19,6 +19,7 @@ OmniDriver::OmniDriver(const rclcpp::NodeOptions & options)
   
   if (!kinematics_.get_params().wheel_names.empty()) {
     motor_cmd_msg_.data.resize(kinematics_.get_params().wheel_names.size(), 0.0);
+    wheel_cmds_.resize(kinematics_.get_params().wheel_names.size(), 0.0);
   }
 
   RCLCPP_INFO(this->get_logger(), "OmniDriver (Unified C++) Initialized.");
@@ -42,6 +43,8 @@ void OmniDriver::load_parameters()
   this->declare_parameter("covariance_scale_yaw", 1.0);
   this->declare_parameter("covariance_scale_vel", 1.0);
 
+  this->declare_parameter("publish_tf", false);
+
   try {
     p.wheel_names = this->get_parameter("wheel_names").as_string_array();
     p.robot_radius = this->get_parameter("robot_radius").as_double();
@@ -57,6 +60,8 @@ void OmniDriver::load_parameters()
     p.covariance_scale_xy = this->get_parameter("covariance_scale_xy").as_double();
     p.covariance_scale_yaw = this->get_parameter("covariance_scale_yaw").as_double();
     p.covariance_scale_vel = this->get_parameter("covariance_scale_vel").as_double();
+
+    publish_tf_ = this->get_parameter("publish_tf").as_bool();
 
   } catch (const rclcpp::exceptions::ParameterNotDeclaredException & e) {
     RCLCPP_FATAL(this->get_logger(), "Parameter Error: %s", e.what());
@@ -89,22 +94,7 @@ void OmniDriver::init_interfaces()
 
 void OmniDriver::cmd_vel_callback(const geometry_msgs::msg::Twist::ConstSharedPtr msg)
 {
-const Eigen::VectorXd & wheel_cmds = kinematics_.calculate_wheel_commands(msg->linear.x, msg->linear.y, msg->angular.z, kinematics_.get_state().theta);
-
-  size_t n = wheel_cmds.size();
-  if (n == 0) {
-    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, 
-        "Kinematics returned 0 commands. Check 'wheel_names' parameter!");
-    return;
-  }
-
-  if (motor_cmd_msg_.data.size() != n) {
-      motor_cmd_msg_.data.resize(n);
-  }
-
-  for (size_t i = 0; i < n; ++i) {
-    motor_cmd_msg_.data[i] = wheel_cmds(i);
-  }
+  wheel_cmds_ = kinematics_.calculate_wheel_commands(msg->linear.x, msg->linear.y, msg->angular.z, kinematics_.get_state().theta);
 }
 
 void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstSharedPtr msg)
@@ -113,14 +103,16 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
   size_t n_wheels = params.wheel_names.size();
   if (n_wheels == 0) return;
 
-  rclcpp::Time msg_time(msg->header.stamp);
+  // 1. Time Logic Handling & micro-ROS Sync Fix
+  rclcpp::Time msg_time = msg->header.stamp;
+  rclcpp::Time pc_time = this->now();
 
-  // Skip if message has no valid timestamp
-  if (msg_time.nanoseconds() <= 0) {
-    return;
+  // If ESP32 time is uninitialized (1970) or drifted by > 1s, override with PC time
+  if (msg_time.nanoseconds() <= 0 || std::abs((msg_time - pc_time).seconds()) > 1.0) {
+    msg_time = pc_time;
   }
 
-  // 1. Parse Joint States
+  // 2. Parse Joint States
   Eigen::VectorXd wheel_vels = Eigen::VectorXd::Zero(n_wheels);
   int found = 0;
 
@@ -133,10 +125,12 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
     }
   }
 
-  if (found < 3) return;
+  if (found < (int)n_wheels) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, 
+      "Received /joint_states but found only %d/%zu matching wheel names. Check ESP32 code vs hardware_params.yaml!", found, n_wheels);
+    return;
+  }
 
-  // 2. Time Logic Handling
-  
   // Case: First run initialization
   if (!first_joint_state_received_) {
     first_joint_state_received_ = true;
@@ -159,6 +153,21 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
   // until the next callback, ensuring the next calculation uses a healthy dt.
   if (dt < 0.0005) {
     return;
+  }
+
+  size_t n = wheel_cmds_.size();
+  if (n == 0) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, 
+        "Kinematics returned 0 commands. Check 'wheel_names' parameter!");
+    return;
+  }
+
+  if (motor_cmd_msg_.data.size() != n) {
+      motor_cmd_msg_.data.resize(n);
+  }
+
+  for (size_t i = 0; i < n; ++i) {
+    motor_cmd_msg_.data[i] = wheel_vels(i) + std::clamp(wheel_cmds_(i), -params.acceleration_limit, params.acceleration_limit);
   }
 
   // 3. Main Update Loop (Only runs if dt is valid)
@@ -189,15 +198,17 @@ void OmniDriver::publish_odometry(
   q_odom.setRPY(0, 0, state.theta);
 
   // TF
-  // geometry_msgs::msg::TransformStamped t;
-  // t.header.stamp = time_now;
-  // t.header.frame_id = odom_frame_id_;
-  // t.child_frame_id = base_frame_id_;
-  // t.transform.translation.x = state.x;
-  // t.transform.translation.y = state.y;
-  // t.transform.translation.z = 0.0;
-  // t.transform.rotation = tf2::toMsg(q_odom);
-  // tf_broadcaster_->sendTransform(t);
+  if (publish_tf_) {
+    geometry_msgs::msg::TransformStamped t;
+    t.header.stamp = time_now;
+    t.header.frame_id = odom_frame_id_;
+    t.child_frame_id = base_frame_id_;
+    t.transform.translation.x = state.x;
+    t.transform.translation.y = state.y;
+    t.transform.translation.z = 0.0;
+    t.transform.rotation = tf2::toMsg(q_odom);
+    tf_broadcaster_->sendTransform(t);
+  }
 
   // Odom Message
   nav_msgs::msg::Odometry odom;
