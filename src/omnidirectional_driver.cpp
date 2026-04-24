@@ -19,7 +19,7 @@ OmniDriver::OmniDriver(const rclcpp::NodeOptions & options)
   
   if (!kinematics_.get_params().wheel_names.empty()) {
     motor_cmd_msg_.data.resize(kinematics_.get_params().wheel_names.size(), 0.0);
-    wheel_cmds_.resize(kinematics_.get_params().wheel_names.size(), 0.0);
+    wheel_cmds_ = Eigen::VectorXd::Zero(kinematics_.get_params().wheel_names.size());
   }
 
   RCLCPP_INFO(this->get_logger(), "OmniDriver (Unified C++) Initialized.");
@@ -42,6 +42,7 @@ void OmniDriver::load_parameters()
   this->declare_parameter("covariance_scale_xy", 1.0);
   this->declare_parameter("covariance_scale_yaw", 1.0);
   this->declare_parameter("covariance_scale_vel", 1.0);
+  this->declare_parameter("acceleration_limit", 1.0);
 
   this->declare_parameter("publish_tf", false);
 
@@ -60,6 +61,7 @@ void OmniDriver::load_parameters()
     p.covariance_scale_xy = this->get_parameter("covariance_scale_xy").as_double();
     p.covariance_scale_yaw = this->get_parameter("covariance_scale_yaw").as_double();
     p.covariance_scale_vel = this->get_parameter("covariance_scale_vel").as_double();
+    p.acceleration_limit = this->get_parameter("acceleration_limit").as_double();
 
     publish_tf_ = this->get_parameter("publish_tf").as_bool();
 
@@ -120,14 +122,21 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
     auto it = std::find(msg->name.begin(), msg->name.end(), params.wheel_names[i]);
     if (it != msg->name.end()) {
       size_t idx = std::distance(msg->name.begin(), it);
-      wheel_vels(i) = msg->velocity[idx];
+      
+      // Prevent segfault if /joint_states does not populate velocity
+      if (idx < msg->velocity.size()) {
+        wheel_vels(i) = msg->velocity[idx];
+      } else {
+        RCLCPP_WARN_ONCE(this->get_logger(), "Joint %s found, but no velocity data published!", params.wheel_names[i].c_str());
+        wheel_vels(i) = 0.0;
+      }
       found++;
     }
   }
 
   if (found < (int)n_wheels) {
     RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, 
-      "Received /joint_states but found only %d/%zu matching wheel names. Check ESP32 code vs hardware_params.yaml!", found, n_wheels);
+      "Received /joint_states but found only %d/%zu matching wheel names.", found, n_wheels);
     return;
   }
 
@@ -135,12 +144,13 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
   if (!first_joint_state_received_) {
     first_joint_state_received_ = true;
     last_time_ = msg_time;
+    RCLCPP_INFO_ONCE(this->get_logger(), "First joint state received, initialized time.");
     return; // Wait for the next callback to have a valid interval
   }
 
   double dt = (msg_time - last_time_).seconds();
 
-  // Case: Time went backwards (Simulation reset or clock jump)
+  // Case: Time went backwards
   if (dt < 0.0) {
     RCLCPP_WARN(this->get_logger(), "Time went backwards (dt=%f). Resetting odometry state.", dt);
     first_joint_state_received_ = false;
@@ -148,17 +158,16 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
     return;
   }
 
-  // Case: Duplicate message or negligible time step (Jitter filter)
-  // By returning here WITHOUT updating last_time_, we allow dt to accumulate
-  // until the next callback, ensuring the next calculation uses a healthy dt.
+  // Case: Jitter filter
   if (dt < 0.0005) {
+    RCLCPP_DEBUG(this->get_logger(), "dt too small (%f), skipping update.", dt);
     return;
   }
 
   size_t n = wheel_cmds_.size();
   if (n == 0) {
     RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, 
-        "Kinematics returned 0 commands. Check 'wheel_names' parameter!");
+        "Kinematics returned 0 commands. Have you sent a /cmd_vel yet?");
     return;
   }
 
@@ -166,8 +175,20 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
       motor_cmd_msg_.data.resize(n);
   }
 
-  for (size_t i = 0; i < n; ++i) {
-    motor_cmd_msg_.data[i] = wheel_vels(i) + std::clamp(wheel_cmds_(i), -params.acceleration_limit, params.acceleration_limit);
+  // Safe acceleration math to prevent division by zero
+  if (params.wheel_radius > 1e-5) {
+    double angular_accel_limit = params.acceleration_limit / params.wheel_radius;
+    double max_step = angular_accel_limit * dt;
+
+    for (size_t i = 0; i < n; ++i) {
+      double step = wheel_cmds_(i) - wheel_vels(i);
+      motor_cmd_msg_.data[i] = wheel_vels(i) + std::clamp(step, -max_step, max_step);
+    }
+  } else {
+    // If wheel_radius is not loaded, fallback directly to commands
+    for (size_t i = 0; i < n; ++i) {
+      motor_cmd_msg_.data[i] = wheel_cmds_(i);
+    }
   }
 
   // 3. Main Update Loop (Only runs if dt is valid)
