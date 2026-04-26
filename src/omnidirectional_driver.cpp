@@ -35,7 +35,7 @@ void OmniDriver::load_parameters()
   this->declare_parameter("use_field_centric", false);
   this->declare_parameter("odom_frame_id", "odom");
   this->declare_parameter("base_frame_id", "robot_footprint");
-  this->declare_parameter("publish_tf", true);  // Disable when using EKF for TF
+  this->declare_parameter("publish_tf", false);  // Disable when using EKF for TF
 
   try {
     p.wheel_names = this->get_parameter("wheel_names").as_string_array();
@@ -82,7 +82,7 @@ void OmniDriver::init_interfaces()
     "joint_group_velocity_controller/commands", qos);
 
   // 4. Publish Odometry (Best Effort is usually better for high-rate odom)
-  odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom", qos);
+  odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("odom", rclcpp::SystemDefaultsQoS());
 
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 }
@@ -222,7 +222,7 @@ void OmniDriver::publish_odometry(
   odom.pose.covariance.fill(0.0);
   odom.pose.covariance[0] = 0.01;   // x
   odom.pose.covariance[7] = 0.01;   // y
-  odom.pose.covariance[35] = 0.01;  // yaw
+  odom.pose.covariance[35] = 0.2;  // yaw
   
   odom.twist.covariance.fill(0.0);
   odom.twist.covariance[0] = 0.01;   // vx
