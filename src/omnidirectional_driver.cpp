@@ -79,17 +79,19 @@ void OmniDriver::load_parameters()
 
 void OmniDriver::init_interfaces()
 {
-  auto qos = rclcpp::SensorDataQoS();
+  auto sensor_qos = rclcpp::SensorDataQoS();
+  auto odom_qos = rclcpp::SystemDefaultsQoS();
 
-  cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>("/cmd_vel", qos, std::bind(&OmniDriver::cmd_vel_callback, this, std::placeholders::_1));
+  cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>("/cmd_vel", sensor_qos, std::bind(&OmniDriver::cmd_vel_callback, this, std::placeholders::_1));
 
-  joint_state_sub_ = this->create_subscription<sensor_msgs::msg::JointState>("/joint_states", qos,std::bind(&OmniDriver::joint_state_callback, this, std::placeholders::_1));
+  joint_state_sub_ = this->create_subscription<sensor_msgs::msg::JointState>("/joint_states", sensor_qos, std::bind(&OmniDriver::joint_state_callback, this, std::placeholders::_1));
 
-  motor_cmd_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/joint_group_velocity_controller/commands", qos);
+  motor_cmd_pub_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("/joint_group_velocity_controller/commands", sensor_qos);
 
-  odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/odom", qos);
+  // Odometry topics use reliable delivery for consistency with state estimation nodes (e.g., EKF)
+  odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/odom", odom_qos);
   
-  twist_cov_pub_ = this->create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>("/twist_with_covariance", qos);
+  twist_cov_pub_ = this->create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>("/twistwithcovariance", odom_qos);
 
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 }
@@ -196,6 +198,19 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
 
   // Forward Kinematics: Calculate Robot Velocity
   const Eigen::Vector3d & robot_vel = kinematics_.calculate_robot_velocity(wheel_vels, dt);
+
+  // Debug logging (log first update and then every 100 updates to reduce spam)
+  static int debug_count = 0;
+  if (debug_count == 0 || debug_count % 100 == 0) {
+    RCLCPP_DEBUG(this->get_logger(), 
+      "Wheel velocities: [%.3f, %.3f, %.3f] rad/s | "
+      "Robot velocity: [vx=%.3f, vy=%.3f, omega=%.3f] m/s | "
+      "Position: [x=%.3f, y=%.3f, theta=%.3f]",
+      wheel_vels(0), wheel_vels(1), wheel_vels(2),
+      robot_vel(0), robot_vel(1), robot_vel(2),
+      kinematics_.get_state().x, kinematics_.get_state().y, kinematics_.get_state().theta);
+  }
+  debug_count++;
 
   motor_cmd_pub_->publish(motor_cmd_msg_);
 

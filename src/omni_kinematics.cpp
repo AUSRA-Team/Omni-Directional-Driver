@@ -1,5 +1,7 @@
 #include "omnidirectional_driver/omni_kinematics.hpp"
 
+#include <iostream>
+
 namespace omnidirectional_driver
 {
 
@@ -35,7 +37,22 @@ void OmniKinematics::configure(const RobotParams & params)
   }
 
   inv_coupling_matrix_ = coupling_matrix_.completeOrthogonalDecomposition().pseudoInverse();
+  
+  // Validation: Log the coupling matrices
+  std::cout << "\n=== Omnidirectional Kinematics Configuration ===\n";
+  std::cout << "Robot Radius: " << params_.robot_radius << " m\n";
+  std::cout << "Wheel Radius: " << params_.wheel_radius << " m\n";
+  std::cout << "Wheel Angles (deg): ";
+  for (size_t i = 0; i < params_.wheel_angles_deg.size(); ++i) {
+    std::cout << params_.wheel_angles_deg[i];
+    if (i < params_.wheel_angles_deg.size() - 1) std::cout << ", ";
+  }
+  std::cout << "\n";
+  std::cout << "Coupling Matrix (wheel_vel = C * robot_vel):\n" << coupling_matrix_ << "\n";
+  std::cout << "Inverse Coupling Matrix (robot_vel = C_inv * wheel_vel):\n" << inv_coupling_matrix_ << "\n";
+  std::cout << "================================================\n\n";
 }
+
 
 const Eigen::VectorXd & OmniKinematics::calculate_wheel_commands(
   double vx, double vy, double omega, double current_heading)
