@@ -91,9 +91,14 @@ void OmniDriver::init_interfaces()
   // Odometry topics use reliable delivery for consistency with state estimation nodes (e.g., EKF)
   odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/odom", odom_qos);
   
-  twist_cov_pub_ = this->create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>("/twistwithcovariance", odom_qos);
+  twist_cov_pub_ = this->create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>("/twistWithCovariance", odom_qos);
 
-  tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+  if(publish_tf_) {
+    RCLCPP_INFO(this->get_logger(), "TF publishing enabled. Will publish %s -> %s transform.", odom_frame_id_.c_str(), base_frame_id_.c_str());
+    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+  } else {
+    RCLCPP_INFO(this->get_logger(), "TF publishing disabled. Not publishing %s -> %s transform.", odom_frame_id_.c_str(), base_frame_id_.c_str());
+  }
 }
 
 void OmniDriver::cmd_vel_callback(const geometry_msgs::msg::Twist::ConstSharedPtr msg)
