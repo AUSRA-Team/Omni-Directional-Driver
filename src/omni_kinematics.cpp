@@ -98,9 +98,15 @@ const Eigen::Vector3d & OmniKinematics::calculate_robot_velocity(const Eigen::Ve
   // Variance of position error for uniform distribution = width^2 / 12
   double pos_var = (tick_dist * tick_dist) / 12.0;
   
-  // Variance of velocity derived from position diff: Var(v) = (Var(p1) + Var(p2)) / dt^2 = 2*Var(p) / dt^2
-  // We clamp dt to avoid division by zero
-  double safe_dt = (dt < 1e-4) ? 1e-4 : dt;
+  // Variance of velocity derived from position diff: Var(v) = 2*Var(p) / dt^2
+  // Clamp dt to the nominal joint-state period (params_.nominal_dt) from below.
+  // Rationale: the quantization noise in a single position reading is fixed regardless
+  // of how frequently messages arrive. Using a dt *smaller* than nominal (e.g. due to
+  // message jitter) would artificially inflate vel_var by (nominal/dt)^2, potentially
+  // by orders of magnitude, destabilising any downstream EKF.
+  // The old clamp of 1e-4 s (10 kHz) was below the jitter filter threshold (0.5 ms)
+  // so it was a dead branch and provided no real protection.
+  double safe_dt = std::max(dt, params_.nominal_dt);
   double vel_var = (2.0 * pos_var) / (safe_dt * safe_dt);
 
   // Fill diagonal noise matrix
@@ -110,8 +116,15 @@ const Eigen::Vector3d & OmniKinematics::calculate_robot_velocity(const Eigen::Ve
   // Propagate to Robot Frame: Sigma_robot = J_inv * Sigma_wheel * J_inv^T
   twist_covariance_ = inv_coupling_matrix_ * wheel_noise_matrix_ * inv_coupling_matrix_.transpose();
 
-  // Apply empirical scale
-  twist_covariance_ *= params_.covariance_scale_vel;
+  // Apply empirical scale via S·Σ·S where S = diag(s_xy, s_xy, s_yaw).
+  // This is the only element-wise operation that preserves PSD and symmetry.
+  //   diagonal terms:    s²         (e.g. s_xy² = scale_vel)
+  //   cross xy–yaw terms: s_xy·s_yaw = √(scale_vel · scale_velyaw)  <-- geometric mean
+  // Direct per-element multiplication with different scales on cross-terms would break PSD.
+  const double s_xy  = std::sqrt(params_.covariance_scale_velxy);
+  const double s_yaw = std::sqrt(params_.covariance_scale_velyaw);
+  const Eigen::DiagonalMatrix<double, 3> S(s_xy, s_xy, s_yaw);
+  twist_covariance_ = S * twist_covariance_ * S;
 
   return calc_robot_vel_;
 }
@@ -160,7 +173,13 @@ const OdometryState & OmniKinematics::integrate_odometry(const Eigen::Vector3d &
   // Apply empirical scales to process each wheel's noise contribution [Future Work: More Sophisticated Noise Models]
   // P_k = F * P_k-1 * F^T + Q
   state_.pose_covariance = F * state_.pose_covariance * F.transpose() + Q;
-  
+
+  // Symmetrize to counteract floating-point drift.
+  // F·P·F^T + Q is symmetric in exact arithmetic, but repeated matrix products
+  // accumulate O(eps_machine) asymmetry per step. After thousands of iterations
+  // this can irritate strict consumers (e.g. robot_localization's covariance checks).
+  state_.pose_covariance = 0.5 * (state_.pose_covariance + state_.pose_covariance.transpose());
+
   return state_;
 }
 

@@ -39,9 +39,18 @@ void OmniDriver::load_parameters()
   
   // Covariance params
   this->declare_parameter("encoder_ppr", 1024);
+  this->declare_parameter("nominal_dt", 0.01);  // 1 / expected joint_state Hz
+  
   this->declare_parameter("covariance_scale_xy", 1.0);
   this->declare_parameter("covariance_scale_yaw", 1.0);
-  this->declare_parameter("covariance_scale_vel", 1.0);
+  this->declare_parameter("covariance_scale_velxy", 1.0);
+  this->declare_parameter("covariance_scale_velyaw", 1.0);
+  
+  this->declare_parameter("covariance_offset_xy", 0.0);
+  this->declare_parameter("covariance_offset_yaw", 0.0);
+  this->declare_parameter("covariance_offset_velxy", 0.0);
+  this->declare_parameter("covariance_offset_velyaw", 0.0);
+  
   this->declare_parameter("acceleration_limit", 1.0);
 
   this->declare_parameter("publish_tf", false);
@@ -58,9 +67,18 @@ void OmniDriver::load_parameters()
     base_frame_id_ = this->get_parameter("base_frame_id").as_string();
 
     p.encoder_ppr = this->get_parameter("encoder_ppr").as_int();
+    p.nominal_dt  = this->get_parameter("nominal_dt").as_double();
+    
     p.covariance_scale_xy = this->get_parameter("covariance_scale_xy").as_double();
     p.covariance_scale_yaw = this->get_parameter("covariance_scale_yaw").as_double();
-    p.covariance_scale_vel = this->get_parameter("covariance_scale_vel").as_double();
+    p.covariance_scale_velxy = this->get_parameter("covariance_scale_velxy").as_double();
+    p.covariance_scale_velyaw = this->get_parameter("covariance_scale_velyaw").as_double();
+    
+    p.covariance_offset_xy = this->get_parameter("covariance_offset_xy").as_double();
+    p.covariance_offset_yaw = this->get_parameter("covariance_offset_yaw").as_double();
+    p.covariance_offset_velxy = this->get_parameter("covariance_offset_velxy").as_double();
+    p.covariance_offset_velyaw = this->get_parameter("covariance_offset_velyaw").as_double();
+    
     p.acceleration_limit = this->get_parameter("acceleration_limit").as_double();
 
     publish_tf_ = this->get_parameter("publish_tf").as_bool();
@@ -92,6 +110,8 @@ void OmniDriver::init_interfaces()
   odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("/odom", odom_qos);
   
   twist_cov_pub_ = this->create_publisher<geometry_msgs::msg::TwistWithCovarianceStamped>("/twistWithCovariance", odom_qos);
+
+  pose_cov_pub_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("/poseWithCovariance", odom_qos);
 
   if(publish_tf_) {
     RCLCPP_INFO(this->get_logger(), "TF publishing enabled. Will publish %s -> %s transform.", odom_frame_id_.c_str(), base_frame_id_.c_str());
@@ -226,7 +246,7 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
 
   // Publish
   publish_odometry(new_state, robot_vel, Q_vel, msg_time);
-  publish_twist_covariance(Q_vel, msg_time);
+  // publish_twist_covariance(Q_vel, msg_time);
 }
 
 void OmniDriver::publish_odometry(
@@ -272,38 +292,42 @@ void OmniDriver::publish_odometry(
   // Row-major 6x6. Indices: 0=xx, 7=yy, 35=thth
   // Internal matrix is 3x3: 0,1,2 maps to x,y,th
   odom.pose.covariance.fill(0.0);
+
+  double scale_xy_yaw = std::sqrt(p.covariance_scale_xy * p.covariance_scale_yaw);
   
   // Map Pose Covariance (Accumulated)
   // X-row
-  odom.pose.covariance[0] = state.pose_covariance(0,0) * p.covariance_scale_xy;
+  odom.pose.covariance[0] = state.pose_covariance(0,0) * p.covariance_scale_xy + p.covariance_offset_xy;
   odom.pose.covariance[1] = state.pose_covariance(0,1) * p.covariance_scale_xy;
-  odom.pose.covariance[5] = state.pose_covariance(0,2) * p.covariance_scale_xy;
-  
+  odom.pose.covariance[5] = state.pose_covariance(0,2) * scale_xy_yaw;
+
   // Y-row
   odom.pose.covariance[6] = state.pose_covariance(1,0) * p.covariance_scale_xy;
-  odom.pose.covariance[7] = state.pose_covariance(1,1) * p.covariance_scale_xy;
-  odom.pose.covariance[11] = state.pose_covariance(1,2) * p.covariance_scale_xy;
+  odom.pose.covariance[7] = state.pose_covariance(1,1) * p.covariance_scale_xy + p.covariance_offset_xy;
+  odom.pose.covariance[11] = state.pose_covariance(1,2) * scale_xy_yaw;
 
   // Theta-row (mapped to instate.pose_covariancex 35 -> element (5,5))
-  odom.pose.covariance[30] = state.pose_covariance(2,0) * p.covariance_scale_yaw;
-  odom.pose.covariance[31] = state.pose_covariance(2,1) * p.covariance_scale_yaw;
-  odom.pose.covariance[35] = state.pose_covariance(2,2) * p.covariance_scale_yaw;
+  odom.pose.covariance[30] = state.pose_covariance(2,0) * scale_xy_yaw;
+  odom.pose.covariance[31] = state.pose_covariance(2,1) * scale_xy_yaw;
+  odom.pose.covariance[35] = state.pose_covariance(2,2) * p.covariance_scale_yaw + p.covariance_offset_yaw;
 
   // Twist Covariance
+  // NOTE: Q_vel is twist_covariance_ from calculate_robot_velocity, which already has
+  // covariance_scale_vel / covariance_scale_velyaw baked in via S·Σ·S.
+  // Applying any scale here would double-scale. Only add the diagonal offset.
   odom.twist.covariance.fill(0.0);
-  
-  // Map Twist Covariance (Instantaneous)
-  odom.twist.covariance[0] = Q_vel(0,0);
-  odom.twist.covariance[1] = Q_vel(0,1);
-  odom.twist.covariance[5] = Q_vel(0,2);
-  
-  odom.twist.covariance[6] = Q_vel(1,0);
-  odom.twist.covariance[7] = Q_vel(1,1);
+
+  odom.twist.covariance[0]  = Q_vel(0,0) + p.covariance_offset_velxy;
+  odom.twist.covariance[1]  = Q_vel(0,1);
+  odom.twist.covariance[5]  = Q_vel(0,2);
+
+  odom.twist.covariance[6]  = Q_vel(1,0);
+  odom.twist.covariance[7]  = Q_vel(1,1) + p.covariance_offset_velxy;
   odom.twist.covariance[11] = Q_vel(1,2);
-  
+
   odom.twist.covariance[30] = Q_vel(2,0);
   odom.twist.covariance[31] = Q_vel(2,1);
-  odom.twist.covariance[35] = Q_vel(2,2);
+  odom.twist.covariance[35] = Q_vel(2,2) + p.covariance_offset_velyaw;
 
   odom_pub_->publish(odom);
 }
@@ -319,22 +343,30 @@ void OmniDriver::publish_twist_covariance(
   twist_msg.header.frame_id = base_frame_id_;
   twist_msg.twist.covariance.fill(0.0);
 
-  // Map Twist Covariance (Instantaneous)
-  twist_msg.twist.covariance[0] = Q_vel(0,0);
-  twist_msg.twist.covariance[1] = Q_vel(0,1);
-  twist_msg.twist.covariance[5] = Q_vel(0,2);
+  // NOTE: Q_vel is already scaled in calculate_robot_velocity via S·Σ·S.
+  // Only add the diagonal offset here — no additional scale.
+  const auto & p = kinematics_.get_params();
 
-  twist_msg.twist.covariance[6] = Q_vel(1,0);
-  twist_msg.twist.covariance[7] = Q_vel(1,1);
+  twist_msg.twist.covariance[0]  = Q_vel(0,0) + p.covariance_offset_velxy;
+  twist_msg.twist.covariance[1]  = Q_vel(0,1);
+  twist_msg.twist.covariance[5]  = Q_vel(0,2);
+
+  twist_msg.twist.covariance[6]  = Q_vel(1,0);
+  twist_msg.twist.covariance[7]  = Q_vel(1,1) + p.covariance_offset_velxy;
   twist_msg.twist.covariance[11] = Q_vel(1,2);
 
   twist_msg.twist.covariance[30] = Q_vel(2,0);
   twist_msg.twist.covariance[31] = Q_vel(2,1);
-  twist_msg.twist.covariance[35] = Q_vel(2,2);
+  twist_msg.twist.covariance[35] = Q_vel(2,2) + p.covariance_offset_velyaw;
 
   twist_cov_pub_->publish(twist_msg);
 }
 
+// void OmniDriver::publish_pose_covariance(
+//   const OdometryState & state,
+//   const rclcpp::Time & time_now)
+// {
+  
 }  // namespace omnidirectional_driver
 
 RCLCPP_COMPONENTS_REGISTER_NODE(omnidirectional_driver::OmniDriver)

@@ -19,10 +19,22 @@ struct RobotParams
   bool use_field_centric = false;
   
   // Covariance / Noise Parameters
-  int encoder_ppr = 1024; // Pulses Per Revolution
+  int encoder_ppr = 1024;    // Pulses Per Revolution
+
+  // Minimum dt used in the velocity-noise model (= 1 / nominal joint-state rate).
+  // Clamping to this prevents jitter-induced messages (dt < nominal) from inflating
+  // vel_var to astronomically large values. Default: 0.01 s (100Hz).
+  double nominal_dt = 0.01;
+  
   double covariance_scale_xy = 1.0;
   double covariance_scale_yaw = 1.0;
-  double covariance_scale_vel = 1.0; // Multiplier for twist covariance
+  double covariance_scale_velxy = 1.0;
+  double covariance_scale_velyaw = 1.0;
+
+  double covariance_offset_xy = 0.0;
+  double covariance_offset_yaw = 0.0;
+  double covariance_offset_velxy = 0.0;
+  double covariance_offset_velyaw = 0.0;
 
   // Computed radians
   std::vector<double> phi_rad;
