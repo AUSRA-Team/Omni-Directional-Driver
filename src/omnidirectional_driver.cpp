@@ -203,20 +203,20 @@ void OmniDriver::joint_state_callback(const sensor_msgs::msg::JointState::ConstS
   }
 
   // Safe acceleration math to prevent division by zero
-  if (params.wheel_radius > 1e-5) {
-    double angular_accel_limit = params.acceleration_limit / params.wheel_radius;
-    double max_step = angular_accel_limit * dt;
+  // if (params.wheel_radius > 1e-5) {
+  //   double angular_accel_limit = params.acceleration_limit / params.wheel_radius;
+  //   double max_step = angular_accel_limit * dt;
 
-    for (size_t i = 0; i < n; ++i) {
-      double step = wheel_cmds_(i) - wheel_vels(i);
-      motor_cmd_msg_.data[i] = wheel_vels(i) + std::clamp(step, -max_step, max_step);
-    }
-  } else {
+  //   for (size_t i = 0; i < n; ++i) {
+  //     double step = wheel_cmds_(i) - wheel_vels(i);
+  //     motor_cmd_msg_.data[i] = wheel_vels(i) + std::clamp(step, -max_step, max_step);
+  //   }
+  // } else {
     // If wheel_radius is not loaded, fallback directly to commands
     for (size_t i = 0; i < n; ++i) {
       motor_cmd_msg_.data[i] = wheel_cmds_(i);
     }
-  }
+  // }
 
   // 3. Main Update Loop (Only runs if dt is valid)
   last_time_ = msg_time;
